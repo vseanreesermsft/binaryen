@@ -50,3 +50,8 @@ test/lit/lit.site.cfg.py
 
 # files related to clangd cache
 .cache/*
+
+# MSFT ignores
+/.dotnet
+/.packages
+/artifacts
