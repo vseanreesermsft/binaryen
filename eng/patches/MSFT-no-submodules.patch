@@ -10,7 +10,7 @@ Index: binaryen/third_party/CMakeLists.txt
 ===================================================================
 --- binaryen.orig/third_party/CMakeLists.txt
 +++ binaryen/third_party/CMakeLists.txt
-@@ -2,11 +2,6 @@ if(BUILD_LLVM_DWARF)
+@@ -2,12 +2,3 @@ if(BUILD_LLVM_DWARF)
    add_subdirectory(llvm-project)
  endif()
  
@@ -19,6 +19,7 @@ Index: binaryen/third_party/CMakeLists.txt
 -  googletest/googletest/include
 -)
 -
- if(BUILD_TESTS)
-   add_library(gtest STATIC googletest/googletest/src/gtest-all.cc)
-   add_library(gtest_main STATIC googletest/googletest/src/gtest_main.cc)
+-if(BUILD_TESTS)
+-  add_library(gtest STATIC googletest/googletest/src/gtest-all.cc)
+-  add_library(gtest_main STATIC googletest/googletest/src/gtest_main.cc)
+-endif()
