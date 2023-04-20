@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.Build.Traversal">
   <PropertyGroup>
-    <ClangTarget Condition="'$(ClangTarget)' == '' and '$(TargetArchitecture)' == 'x64'">x86_64-linux-gnu</ClangTarget>
-    <ClangTarget Condition="'$(ClangTarget)' == '' and '$(TargetArchitecture)' == 'arm64'">aarch64-linux-gnu</ClangTarget>
+    <ClangVersion Condition="'$(ClangVersion)' == ''">clang</ClangVersion>
+    <ClangPlusVersion Condition="'$(ClangPlusVersion)' == ''">clang++</ClangPlusVersion>
     <Sysroot Condition="'$(ROOTFS_DIR)' == ''">/</Sysroot>
     <Sysroot Condition="'$(ROOTFS_DIR)' != ''">$(ROOTFS_DIR)</Sysroot>
     <CMakeGenerator Condition="$(CMakeGenerator) == '' and '$(BuildOS)' != 'Windows_NT'">Unix Makefiles</CMakeGenerator>
@@ -53,8 +53,8 @@
       <_BuildArgs Include='-DCMAKE_EXE_LINKER_FLAGS="$(_ExeLinkerFlags)"' />
       <_BuildArgs Include='-DCMAKE_SHARED_LINKER_FLAGS="$(_SharedLinkerFlags)"' />
       <_BuildArgs Include="-DBUILD_TESTS:BOOL=OFF" />
-      <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_C_COMPILER=clang" />
-      <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_CXX_COMPILER=clang" />
+      <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_C_COMPILER=$(ClangVersion)" />
+      <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_CXX_COMPILER=$(ClangPlusVersion)" />
     </ItemGroup>
     <PropertyGroup>
       <_CmakeArgs>$(_SetupEnvironment) cmake $(ProjectDir) -G "$(CMakeGenerator)" @(_BuildArgs->'%(Identity)',' ')</_CmakeArgs>
