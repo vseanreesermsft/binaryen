@@ -1,26 +1,15 @@
 
-function asmFunc(global, env, buffer) {
- "almost asm";
- var HEAP8 = new global.Int8Array(buffer);
- var HEAP16 = new global.Int16Array(buffer);
- var HEAP32 = new global.Int32Array(buffer);
- var HEAPU8 = new global.Uint8Array(buffer);
- var HEAPU16 = new global.Uint16Array(buffer);
- var HEAPU32 = new global.Uint32Array(buffer);
- var HEAPF32 = new global.Float32Array(buffer);
- var HEAPF64 = new global.Float64Array(buffer);
- var Math_imul = global.Math.imul;
- var Math_fround = global.Math.fround;
- var Math_abs = global.Math.abs;
- var Math_clz32 = global.Math.clz32;
- var Math_min = global.Math.min;
- var Math_max = global.Math.max;
- var Math_floor = global.Math.floor;
- var Math_ceil = global.Math.ceil;
- var Math_sqrt = global.Math.sqrt;
- var abort = env.abort;
- var nan = global.NaN;
- var infinity = global.Infinity;
+function asmFunc(imports) {
+ var Math_imul = Math.imul;
+ var Math_fround = Math.fround;
+ var Math_abs = Math.abs;
+ var Math_clz32 = Math.clz32;
+ var Math_min = Math.min;
+ var Math_max = Math.max;
+ var Math_floor = Math.floor;
+ var Math_ceil = Math.ceil;
+ var Math_trunc = Math.trunc;
+ var Math_sqrt = Math.sqrt;
  function $0(x, y) {
   x = x | 0;
   y = y | 0;
@@ -128,7 +117,7 @@ function asmFunc(global, env, buffer) {
  
  function $18(x) {
   x = x | 0;
-  return (x | 0) == (0 | 0) | 0;
+  return !x | 0;
  }
  
  function $19(x, y) {
@@ -194,7 +183,7 @@ function asmFunc(global, env, buffer) {
  function __wasm_ctz_i32(var$0) {
   var$0 = var$0 | 0;
   if (var$0) {
-   return 31 - Math_clz32((var$0 + 4294967295 | 0) ^ var$0 | 0) | 0 | 0
+   return 31 - Math_clz32((var$0 + -1 | 0) ^ var$0 | 0) | 0 | 0
   }
   return 32 | 0;
  }
@@ -203,16 +192,15 @@ function asmFunc(global, env, buffer) {
   var$0 = var$0 | 0;
   var var$1 = 0, $5_1 = 0;
   label$1 : {
-   label$2 : do {
+   label$2 : while (1) {
     $5_1 = var$1;
-    if ((var$0 | 0) == (0 | 0)) {
+    if (!var$0) {
      break label$1
     }
     var$0 = var$0 & (var$0 - 1 | 0) | 0;
     var$1 = var$1 + 1 | 0;
     continue label$2;
-    break label$2;
-   } while (1);
+   };
   }
   return $5_1 | 0;
  }
@@ -223,7 +211,7 @@ function asmFunc(global, env, buffer) {
   var var$2 = 0;
   var$2 = var$1 & 31 | 0;
   var$1 = (0 - var$1 | 0) & 31 | 0;
-  return ((4294967295 >>> var$2 | 0) & var$0 | 0) << var$2 | 0 | (((4294967295 << var$1 | 0) & var$0 | 0) >>> var$1 | 0) | 0 | 0;
+  return ((-1 >>> var$2 | 0) & var$0 | 0) << var$2 | 0 | (((-1 << var$1 | 0) & var$0 | 0) >>> var$1 | 0) | 0 | 0;
  }
  
  function __wasm_rotr_i32(var$0, var$1) {
@@ -232,10 +220,9 @@ function asmFunc(global, env, buffer) {
   var var$2 = 0;
   var$2 = var$1 & 31 | 0;
   var$1 = (0 - var$1 | 0) & 31 | 0;
-  return ((4294967295 << var$2 | 0) & var$0 | 0) >>> var$2 | 0 | (((4294967295 >>> var$1 | 0) & var$0 | 0) << var$1 | 0) | 0 | 0;
+  return ((-1 << var$2 | 0) & var$0 | 0) >>> var$2 | 0 | (((-1 >>> var$1 | 0) & var$0 | 0) << var$1 | 0) | 0 | 0;
  }
  
- var FUNCTION_TABLE = [];
  return {
   "add": $0, 
   "sub": $1, 
@@ -269,8 +256,8 @@ function asmFunc(global, env, buffer) {
  };
 }
 
-var memasmFunc = new ArrayBuffer(65536);
-var retasmFunc = asmFunc({Math,Int8Array,Uint8Array,Int16Array,Uint16Array,Int32Array,Uint32Array,Float32Array,Float64Array,NaN,Infinity}, {abort:function() { throw new Error('abort'); }},memasmFunc);
+var retasmFunc = asmFunc({
+});
 export var add = retasmFunc.add;
 export var sub = retasmFunc.sub;
 export var mul = retasmFunc.mul;

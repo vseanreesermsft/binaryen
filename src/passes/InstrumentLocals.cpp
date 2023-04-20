@@ -43,13 +43,11 @@
 //    )
 //   )
 
-#include <wasm.h>
-#include <wasm-builder.h>
-#include <pass.h>
-#include "shared-constants.h"
 #include "asmjs/shared-constants.h"
-#include "asm_v_wasm.h"
-#include "ir/function-type-utils.h"
+#include "shared-constants.h"
+#include <pass.h>
+#include <wasm-builder.h>
+#include <wasm.h>
 
 namespace wasm {
 
@@ -57,89 +55,150 @@ Name get_i32("get_i32");
 Name get_i64("get_i64");
 Name get_f32("get_f32");
 Name get_f64("get_f64");
+Name get_v128("get_v128");
+Name get_funcref("get_funcref");
+Name get_externref("get_externref");
 
 Name set_i32("set_i32");
 Name set_i64("set_i64");
 Name set_f32("set_f32");
 Name set_f64("set_f64");
+Name set_v128("set_v128");
+Name set_funcref("set_funcref");
+Name set_externref("set_externref");
 
 struct InstrumentLocals : public WalkerPass<PostWalker<InstrumentLocals>> {
-  void visitGetLocal(GetLocal* curr) {
+  void visitLocalGet(LocalGet* curr) {
     Builder builder(*getModule());
     Name import;
-    switch (curr->type) {
-      case i32: import = get_i32; break;
-      case i64: return; // TODO
-      case f32: import = get_f32; break;
-      case f64: import = get_f64; break;
-      case v128: assert(false && "v128 not implemented yet");
-      case none: WASM_UNREACHABLE();
-      case unreachable: WASM_UNREACHABLE();
+    if (curr->type.isRef()) {
+      auto heapType = curr->type.getHeapType();
+      if (heapType == HeapType::func && curr->type.isNullable()) {
+        import = get_funcref;
+      } else if (heapType == HeapType::ext && curr->type.isNullable()) {
+        import = get_externref;
+      } else {
+        WASM_UNREACHABLE("TODO: general reference types");
+      }
+    } else {
+      TODO_SINGLE_COMPOUND(curr->type);
+      switch (curr->type.getBasic()) {
+        case Type::i32:
+          import = get_i32;
+          break;
+        case Type::i64:
+          return; // TODO
+        case Type::f32:
+          import = get_f32;
+          break;
+        case Type::f64:
+          import = get_f64;
+          break;
+        case Type::v128:
+          import = get_v128;
+          break;
+        case Type::none:
+        case Type::unreachable:
+          WASM_UNREACHABLE("unexpected type");
+      }
     }
-    replaceCurrent(
-      builder.makeCall(
-        import,
-        {
-          builder.makeConst(Literal(int32_t(id++))),
-          builder.makeConst(Literal(int32_t(curr->index))),
-          curr
-        },
-        curr->type
-      )
-    );
+    replaceCurrent(builder.makeCall(import,
+                                    {builder.makeConst(int32_t(id++)),
+                                     builder.makeConst(int32_t(curr->index)),
+                                     curr},
+                                    curr->type));
   }
 
-  void visitSetLocal(SetLocal* curr) {
+  void visitLocalSet(LocalSet* curr) {
+    // We don't instrument pop instructions. They are automatically deleted when
+    // writing binary and generated when reading binary, so they don't work with
+    // local set/get instrumentation.
+    if (curr->value->is<Pop>()) {
+      return;
+    }
+
     Builder builder(*getModule());
     Name import;
-    switch (curr->value->type) {
-      case i32: import = set_i32; break;
-      case i64: return; // TODO
-      case f32: import = set_f32; break;
-      case f64: import = set_f64; break;
-      case v128: assert(false && "v128 not implemented yet");
-      case unreachable: return; // nothing to do here
-      case none: WASM_UNREACHABLE();
+    auto type = curr->value->type;
+    if (type.isFunction() && type.getHeapType() != HeapType::func) {
+      // FIXME: support typed function references
+      return;
     }
-    curr->value = builder.makeCall(
-      import,
-      {
-        builder.makeConst(Literal(int32_t(id++))),
-        builder.makeConst(Literal(int32_t(curr->index))),
-        curr->value
-      },
-      curr->value->type
-    );
+    if (type.isRef()) {
+      auto heapType = type.getHeapType();
+      if (heapType == HeapType::func && type.isNullable()) {
+        import = set_funcref;
+      } else if (heapType == HeapType::ext && type.isNullable()) {
+        import = set_externref;
+      } else {
+        WASM_UNREACHABLE("TODO: general reference types");
+      }
+    } else {
+      TODO_SINGLE_COMPOUND(curr->value->type);
+      switch (type.getBasic()) {
+        case Type::i32:
+          import = set_i32;
+          break;
+        case Type::i64:
+          return; // TODO
+        case Type::f32:
+          import = set_f32;
+          break;
+        case Type::f64:
+          import = set_f64;
+          break;
+        case Type::v128:
+          import = set_v128;
+          break;
+        case Type::unreachable:
+          return; // nothing to do here
+        case Type::none:
+          WASM_UNREACHABLE("unexpected type");
+      }
+    }
+    curr->value = builder.makeCall(import,
+                                   {builder.makeConst(int32_t(id++)),
+                                    builder.makeConst(int32_t(curr->index)),
+                                    curr->value},
+                                   curr->value->type);
   }
 
   void visitModule(Module* curr) {
-    addImport(curr, get_i32,  "iiii");
-    addImport(curr, get_i64,  "jiij");
-    addImport(curr, get_f32,  "fiif");
-    addImport(curr, get_f64,  "diid");
-    addImport(curr, set_i32,  "iiii");
-    addImport(curr, set_i64,  "jiij");
-    addImport(curr, set_f32,  "fiif");
-    addImport(curr, set_f64,  "diid");
+    addImport(curr, get_i32, {Type::i32, Type::i32, Type::i32}, Type::i32);
+    addImport(curr, get_i64, {Type::i32, Type::i32, Type::i64}, Type::i64);
+    addImport(curr, get_f32, {Type::i32, Type::i32, Type::f32}, Type::f32);
+    addImport(curr, get_f64, {Type::i32, Type::i32, Type::f64}, Type::f64);
+    addImport(curr, set_i32, {Type::i32, Type::i32, Type::i32}, Type::i32);
+    addImport(curr, set_i64, {Type::i32, Type::i32, Type::i64}, Type::i64);
+    addImport(curr, set_f32, {Type::i32, Type::i32, Type::f32}, Type::f32);
+    addImport(curr, set_f64, {Type::i32, Type::i32, Type::f64}, Type::f64);
+
+    if (curr->features.hasReferenceTypes()) {
+      Type func = Type(HeapType::func, Nullable);
+      Type ext = Type(HeapType::ext, Nullable);
+
+      addImport(curr, get_funcref, {Type::i32, Type::i32, func}, func);
+      addImport(curr, set_funcref, {Type::i32, Type::i32, func}, func);
+      addImport(curr, get_externref, {Type::i32, Type::i32, ext}, ext);
+      addImport(curr, set_externref, {Type::i32, Type::i32, ext}, ext);
+    }
+    if (curr->features.hasSIMD()) {
+      addImport(curr, get_v128, {Type::i32, Type::i32, Type::v128}, Type::v128);
+      addImport(curr, set_v128, {Type::i32, Type::i32, Type::v128}, Type::v128);
+    }
   }
 
 private:
   Index id = 0;
 
-  void addImport(Module* wasm, Name name, std::string sig) {
-    auto import = new Function;
-    import->name = name;
+  void addImport(Module* wasm, Name name, Type params, Type results) {
+    auto import = Builder::makeFunction(name, Signature(params, results), {});
     import->module = ENV;
     import->base = name;
-    auto* functionType = ensureFunctionType(sig, wasm);
-    import->type = functionType->name;
-    FunctionTypeUtils::fillFunction(import, functionType);
-    wasm->addFunction(import);
+    wasm->addFunction(std::move(import));
   }
 };
 
-Pass* createInstrumentLocalsPass() {
-  return new InstrumentLocals();
-}
+Pass* createInstrumentLocalsPass() { return new InstrumentLocals(); }
 
 } // namespace wasm

@@ -5,9 +5,7 @@ namespace wasm {
 #ifdef WASM_INTERPRETER_DEBUG
 int Indenter::indentLevel = 0;
 
-Indenter::Indenter(const char* entry) : entryName(entry) {
-  ++indentLevel;
-}
+Indenter::Indenter(const char* entry) : entryName(entry) { ++indentLevel; }
 Indenter::~Indenter() {
   print();
   std::cout << "exit " << entryName << '\n';
@@ -20,5 +18,9 @@ void Indenter::print() {
   }
 }
 #endif // WASM_INTERPRETER_DEBUG
+
+std::ostream& operator<<(std::ostream& o, const WasmException& exn) {
+  return o << exn.tag << " " << exn.values;
+}
 
 } // namespace wasm

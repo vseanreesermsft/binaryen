@@ -27,16 +27,14 @@
 
 #include "dataflow/graph.h"
 
-namespace wasm {
-
-namespace DataFlow {
+namespace wasm::DataFlow {
 
 // Calculates the users of each node.
 //   users[x] = { y, z, .. }
 // where y, z etc. are nodes that use x, that is, x is in their
 // values vector.
 class Users {
-  typedef std::unordered_set<DataFlow::Node*> UserSet;
+  using UserSet = std::unordered_set<DataFlow::Node*>;
 
   std::unordered_map<DataFlow::Node*, UserSet> users;
 
@@ -89,18 +87,12 @@ public:
   }
 
   // Adds a new user to a node. Called when we add or change a value of a node.
-  void addUser(Node* node, Node* newUser) {
-    users[node].insert(newUser);
-  }
+  void addUser(Node* node, Node* newUser) { users[node].insert(newUser); }
 
   // Remove all uses of a node. Called when a node is being removed.
-  void removeAllUsesOf(Node* node) {
-    users.erase(node);
-  }
+  void removeAllUsesOf(Node* node) { users.erase(node); }
 };
 
-} // namespace DataFlow
-
-} // namespace wasm
+} // namespace wasm::DataFlow
 
 #endif // wasm_dataflow_users

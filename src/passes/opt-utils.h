@@ -17,10 +17,13 @@
 #ifndef wasm_passes_opt_utils_h
 #define wasm_passes_opt_utils_h
 
+#include <functional>
 #include <unordered_set>
 
-#include <wasm.h>
+#include <ir/element-utils.h>
+#include <ir/module-utils.h>
 #include <pass.h>
+#include <wasm.h>
 
 namespace wasm {
 
@@ -28,7 +31,9 @@ namespace OptUtils {
 
 // Run useful optimizations after inlining new code into a set
 // of functions.
-inline void optimizeAfterInlining(std::unordered_set<Function*>& funcs, Module* module, PassRunner* parentRunner) {
+inline void optimizeAfterInlining(const std::unordered_set<Function*>& funcs,
+                                  Module* module,
+                                  PassRunner* parentRunner) {
   // save the full list of functions on the side
   std::vector<std::unique_ptr<Function>> all;
   all.swap(module->functions);
@@ -39,7 +44,8 @@ inline void optimizeAfterInlining(std::unordered_set<Function*>& funcs, Module* 
   PassRunner runner(module, parentRunner->options);
   runner.setIsNested(true);
   runner.setValidateGlobally(false); // not a full valid module
-  runner.add("precompute-propagate"); // this is especially useful after inlining
+  // this is especially useful after inlining
+  runner.add("precompute-propagate");
   runner.addDefaultFunctionOptimizationPasses(); // do all the usual stuff
   runner.run();
   // restore all the funcs
@@ -48,6 +54,52 @@ inline void optimizeAfterInlining(std::unordered_set<Function*>& funcs, Module* 
   }
   all.swap(module->functions);
   module->updateMaps();
+}
+
+struct FunctionRefReplacer
+  : public WalkerPass<PostWalker<FunctionRefReplacer>> {
+  bool isFunctionParallel() override { return true; }
+
+  using MaybeReplace = std::function<void(Name&)>;
+
+  FunctionRefReplacer(MaybeReplace maybeReplace) : maybeReplace(maybeReplace) {}
+
+  std::unique_ptr<Pass> create() override {
+    return std::make_unique<FunctionRefReplacer>(maybeReplace);
+  }
+
+  void visitCall(Call* curr) { maybeReplace(curr->target); }
+
+  void visitRefFunc(RefFunc* curr) { maybeReplace(curr->func); }
+
+private:
+  MaybeReplace maybeReplace;
+};
+
+inline void replaceFunctions(PassRunner* runner,
+                             Module& module,
+                             const std::map<Name, Name>& replacements) {
+  auto maybeReplace = [&](Name& name) {
+    auto iter = replacements.find(name);
+    if (iter != replacements.end()) {
+      name = iter->second;
+    }
+  };
+  // replace direct calls in code both functions and module elements
+  FunctionRefReplacer replacer(maybeReplace);
+  replacer.run(runner, &module);
+  replacer.runOnModuleCode(runner, &module);
+
+  // replace in start
+  if (module.start.is()) {
+    maybeReplace(module.start);
+  }
+  // replace in exports
+  for (auto& exp : module.exports) {
+    if (exp->kind == ExternalKind::Function) {
+      maybeReplace(exp->value);
+    }
+  }
 }
 
 } // namespace OptUtils

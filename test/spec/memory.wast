@@ -5,6 +5,13 @@
 (module (memory 1 256))
 (module (memory 0 65536))
 
+(module (memory (data)) (func (export "memsize") (result i32) (memory.size)))
+(assert_return (invoke "memsize") (i32.const 0))
+(module (memory (data "")) (func (export "memsize") (result i32) (memory.size)))
+(assert_return (invoke "memsize") (i32.const 0))
+(module (memory (data "x")) (func (export "memsize") (result i32) (memory.size)))
+(assert_return (invoke "memsize") (i32.const 1))
+
 (assert_invalid (module (data (i32.const 0))) "unknown memory")
 (assert_invalid (module (data (i32.const 0) "")) "unknown memory")
 (assert_invalid (module (data (i32.const 0) "x")) "unknown memory")
@@ -14,7 +21,7 @@
   "unknown memory"
 )
 (assert_invalid
-  (module (func (f32.store (f32.const 0) (i32.const 0))))
+  (module (func (f32.store (i32.const 0) (f32.const 0))))
   "unknown memory"
 )
 (assert_invalid
@@ -23,6 +30,10 @@
 )
 (assert_invalid
   (module (func (i32.store8 (i32.const 0) (i32.const 0))))
+  "unknown memory"
+)
+(assert_invalid
+  (module (func (drop (memory.size))))
   "unknown memory"
 )
 (assert_invalid

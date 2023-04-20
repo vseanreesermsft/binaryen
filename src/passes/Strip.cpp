@@ -21,35 +21,29 @@
 
 #include <functional>
 
-#include "wasm.h"
-#include "wasm-binary.h"
 #include "pass.h"
-
-using namespace std;
+#include "wasm-binary.h"
+#include "wasm.h"
 
 namespace wasm {
 
 struct Strip : public Pass {
+  bool requiresNonNullableLocalFixups() override { return false; }
+
   // A function that returns true if the method should be removed.
-  typedef std::function<bool (UserSection&)> Decider;
+  using Decider = std::function<bool(CustomSection&)>;
   Decider decider;
 
   Strip(Decider decider) : decider(decider) {}
 
-  void run(PassRunner* runner, Module* module) override {
+  void run(Module* module) override {
     // Remove name and debug sections.
-    auto& sections = module->userSections;
-    sections.erase(
-      std::remove_if(
-        sections.begin(),
-        sections.end(),
-        decider
-      ),
-      sections.end()
-    );
+    auto& sections = module->customSections;
+    sections.erase(std::remove_if(sections.begin(), sections.end(), decider),
+                   sections.end());
     // If we're cleaning up debug info, clear on the function and module too.
-    UserSection temp;
-    temp.name = BinaryConsts::UserSections::Name;
+    CustomSection temp;
+    temp.name = BinaryConsts::CustomSections::Name;
     if (decider(temp)) {
       module->clearDebugInfo();
       for (auto& func : module->functions) {
@@ -60,18 +54,23 @@ struct Strip : public Pass {
   }
 };
 
-Pass *createStripDebugPass() {
-  return new Strip([&](const UserSection& curr) {
-    return curr.name == BinaryConsts::UserSections::Name ||
-           curr.name == BinaryConsts::UserSections::SourceMapUrl ||
-           curr.name.find(".debug") == 0 ||
-           curr.name.find("reloc..debug") == 0;
+Pass* createStripDebugPass() {
+  return new Strip([&](const CustomSection& curr) {
+    return curr.name == BinaryConsts::CustomSections::Name ||
+           curr.name == BinaryConsts::CustomSections::SourceMapUrl ||
+           curr.name.find(".debug") == 0 || curr.name.find("reloc..debug") == 0;
   });
 }
 
-Pass *createStripProducersPass() {
-  return new Strip([&](const UserSection& curr) {
-    return curr.name == BinaryConsts::UserSections::Producers;
+Pass* createStripDWARFPass() {
+  return new Strip([&](const CustomSection& curr) {
+    return curr.name.find(".debug") == 0 || curr.name.find("reloc..debug") == 0;
+  });
+}
+
+Pass* createStripProducersPass() {
+  return new Strip([&](const CustomSection& curr) {
+    return curr.name == BinaryConsts::CustomSections::Producers;
   });
 }
 

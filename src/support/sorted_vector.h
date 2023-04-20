@@ -21,6 +21,7 @@
 #ifndef wasm_support_sorted_vector_h
 #define wasm_support_sorted_vector_h
 
+#include "wasm.h"
 #include <vector>
 
 namespace wasm {
@@ -61,8 +62,9 @@ struct SortedVector : public std::vector<Index> {
 
   void insert(Index x) {
     auto it = std::lower_bound(begin(), end(), x);
-    if (it == end()) push_back(x);
-    else if (*it > x) {
+    if (it == end()) {
+      push_back(x);
+    } else if (*it > x) {
       Index i = it - begin();
       resize(size() + 1);
       std::move_backward(begin() + i, begin() + size() - 1, end());
@@ -80,13 +82,12 @@ struct SortedVector : public std::vector<Index> {
     return false;
   }
 
-  bool has(Index x) {
+  bool has(Index x) const {
     auto it = std::lower_bound(begin(), end(), x);
     return it != end() && *it == x;
   }
 
-  template<typename T>
-  SortedVector& filter(T keep) {
+  template<typename T> SortedVector& filter(T keep) {
     size_t skip = 0;
     for (size_t i = 0; i < size(); i++) {
       if (keep((*this)[i])) {
@@ -107,7 +108,9 @@ struct SortedVector : public std::vector<Index> {
 
   void dump(const char* str = nullptr) const {
     std::cout << "SortedVector " << (str ? str : "") << ": ";
-    for (auto x : *this) std::cout << x << " ";
+    for (auto x : *this) {
+      std::cout << x << " ";
+    }
     std::cout << '\n';
   }
 };

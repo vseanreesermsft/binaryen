@@ -22,32 +22,35 @@
 // This may incur a tradeoff, though, as while it reduces binary size, it may
 // increase gzip size. This might be because the new order has the functions in
 // a less beneficial position for compression, that is, mutually-compressible
-// functions are no longer together (when they were before, in the original order,
-// the has some natural tendency one way or the other). TODO: investigate
-// similarity ordering here.
+// functions are no longer together (when they were before, in the original
+// order, the has some natural tendency one way or the other). TODO: investigate
+// similarity ordering here (see #4322)
 //
-
 
 #include <memory>
 
-#include <wasm.h>
+#include <ir/element-utils.h>
 #include <pass.h>
+#include <wasm.h>
 
 namespace wasm {
 
-typedef std::unordered_map<Name, std::atomic<Index>> NameCountMap;
+using NameCountMap = std::unordered_map<Name, std::atomic<Index>>;
 
 struct CallCountScanner : public WalkerPass<PostWalker<CallCountScanner>> {
   bool isFunctionParallel() override { return true; }
 
+  bool modifiesBinaryenIR() override { return false; }
+
   CallCountScanner(NameCountMap* counts) : counts(counts) {}
 
-  CallCountScanner* create() override {
-    return new CallCountScanner(counts);
+  std::unique_ptr<Pass> create() override {
+    return std::make_unique<CallCountScanner>(counts);
   }
 
   void visitCall(Call* curr) {
-    assert(counts->count(curr->target) > 0); // can't add a new element in parallel
+    // can't add a new element in parallel
+    assert(counts->count(curr->target) > 0);
     (*counts)[curr->target]++;
   }
 
@@ -56,19 +59,18 @@ private:
 };
 
 struct ReorderFunctions : public Pass {
-  void run(PassRunner* runner, Module* module) override {
+  // Only reorders functions, does not change their contents.
+  bool requiresNonNullableLocalFixups() override { return false; }
+
+  void run(Module* module) override {
     NameCountMap counts;
-    // fill in info, as we operate on it in parallel (each function to its own entry)
+    // fill in info, as we operate on it in parallel (each function to its own
+    // entry)
     for (auto& func : module->functions) {
       counts[func->name];
     }
     // find counts on function calls
-    {
-      PassRunner runner(module);
-      runner.setIsNested(true);
-      runner.add<CallCountScanner>(&counts);
-      runner.run();
-    }
+    CallCountScanner(&counts).run(getPassRunner(), module);
     // find counts on global usages
     if (module->start.is()) {
       counts[module->start]++;
@@ -76,25 +78,23 @@ struct ReorderFunctions : public Pass {
     for (auto& curr : module->exports) {
       counts[curr->value]++;
     }
-    for (auto& segment : module->table.segments) {
-      for (auto& curr : segment.data) {
-        counts[curr]++;
-      }
-    }
+    ElementUtils::iterAllElementFunctionNames(
+      module, [&](Name& name) { counts[name]++; });
+    // TODO: count all RefFunc as well
+    // TODO: count the declaration section as well, which adds another mention
     // sort
-    std::sort(module->functions.begin(), module->functions.end(), [&counts](
-      const std::unique_ptr<Function>& a,
-      const std::unique_ptr<Function>& b) -> bool {
-      if (counts[a->name] == counts[b->name]) {
-        return strcmp(a->name.str, b->name.str) > 0;
-      }
-      return counts[a->name] > counts[b->name];
-    });
+    std::sort(module->functions.begin(),
+              module->functions.end(),
+              [&counts](const std::unique_ptr<Function>& a,
+                        const std::unique_ptr<Function>& b) -> bool {
+                if (counts[a->name] == counts[b->name]) {
+                  return a->name > b->name;
+                }
+                return counts[a->name] > counts[b->name];
+              });
   }
 };
 
-Pass *createReorderFunctionsPass() {
-  return new ReorderFunctions();
-}
+Pass* createReorderFunctionsPass() { return new ReorderFunctions(); }
 
 } // namespace wasm

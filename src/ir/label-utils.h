@@ -17,46 +17,34 @@
 #ifndef wasm_ir_label_h
 #define wasm_ir_label_h
 
-#include "wasm.h"
 #include "wasm-traversal.h"
+#include "wasm.h"
 
-namespace wasm {
-
-namespace LabelUtils {
+namespace wasm::LabelUtils {
 
 // Handles branch/loop labels in a function; makes it easy to add new
 // ones without duplicates
 class LabelManager : public PostWalker<LabelManager> {
 public:
-  LabelManager(Function* func) {
-    walkFunction(func);
-  }
+  LabelManager(Function* func) { walkFunction(func); }
 
   Name getUnique(std::string prefix) {
     while (1) {
       auto curr = Name(prefix + std::to_string(counter++));
-      if (labels.find(curr) == labels.end()) {
-        labels.insert(curr);
+      if (labels.emplace(curr).second) {
         return curr;
       }
     }
   }
 
-  void visitBlock(Block* curr) {
-    labels.insert(curr->name);
-  }
-  void visitLoop(Loop* curr) {
-    labels.insert(curr->name);
-  }
+  void visitBlock(Block* curr) { labels.insert(curr->name); }
+  void visitLoop(Loop* curr) { labels.insert(curr->name); }
 
 private:
   std::set<Name> labels;
   size_t counter = 0;
 };
 
-} // namespace LabelUtils
-
-} // namespace wasm
+} // namespace wasm::LabelUtils
 
 #endif // wasm_ir_label_h
-

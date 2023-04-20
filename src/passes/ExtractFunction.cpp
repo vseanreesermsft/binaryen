@@ -14,53 +14,83 @@
  * limitations under the License.
  */
 
-// Removes code from all functions but one, leaving a valid module
-// with (mostly) just the code you want to debug (function-parallel,
-// non-lto) passes on.
+// Removes code from all functions but one, leaving a valid module with (mostly)
+// just the code from that function, as best we can.
+//
+// This pass will run --remove-unused-module-elements automatically for you, in
+// order to remove as many things as possible.
 
-#include "wasm.h"
+#include <cctype>
+
 #include "pass.h"
+#include "wasm-builder.h"
+#include "wasm.h"
 
 namespace wasm {
 
+static void extract(PassRunner* runner, Module* module, Name name) {
+  std::cerr << "extracting " << name << "\n";
+  bool found = false;
+  for (auto& func : module->functions) {
+    if (func->name != name) {
+      // Turn it into an import.
+      func->module = "env";
+      func->base = func->name;
+      func->vars.clear();
+      func->body = nullptr;
+    } else {
+      found = true;
+    }
+  }
+  if (!found) {
+    Fatal() << "could not find the function to extract\n";
+  }
+
+  // Leave just one export, for the thing we want.
+  module->exports.clear();
+  module->updateMaps();
+  module->addExport(Builder::makeExport(name, name, ExternalKind::Function));
+
+  // Remove unneeded things.
+  PassRunner postRunner(runner);
+  postRunner.add("remove-unused-module-elements");
+  postRunner.run();
+}
+
 struct ExtractFunction : public Pass {
-  void run(PassRunner* runner, Module* module) override {
-    Name name = runner->options.getArgument("extract", "ExtractFunction usage:  wasm-opt --pass-arg=extract@FUNCTION_NAME");
-    std::cerr << "extracting " << name << "\n";
-    bool found = false;
-    for (auto& func : module->functions) {
-      if (func->name != name) {
-        // Turn it into an import.
-        func->module = "env";
-        func->base = func->name;
-        func->vars.clear();
-        func->body = nullptr;
-      } else {
-        found = true;
-      }
-    }
-    if (!found) {
-      std::cerr << "could not find the function to extract\n";
-      abort();
-    }
-    // clear data
-    module->memory.segments.clear();
-    module->table.segments.clear();
-    // leave just an export for the thing we want
-    module->exports.clear();
-    auto* export_ = new Export;
-    export_->name = name;
-    export_->value = name;
-    export_->kind = ExternalKind::Function;
-    module->addExport(export_);
+  void run(Module* module) override {
+    Name name = getPassOptions().getArgument(
+      "extract-function",
+      "ExtractFunction usage:  wasm-opt --extract-function=FUNCTION_NAME");
+    extract(getPassRunner(), module, name);
   }
 };
 
-// declare pass
+struct ExtractFunctionIndex : public Pass {
+  void run(Module* module) override {
+    std::string index =
+      getPassOptions().getArgument("extract-function-index",
+                                   "ExtractFunctionIndex usage: wasm-opt "
+                                   "--extract-function-index=FUNCTION_INDEX");
+    for (char c : index) {
+      if (!std::isdigit(c)) {
+        Fatal() << "Expected numeric function index";
+      }
+    }
+    Index i = std::stoi(index);
+    if (i >= module->functions.size()) {
+      Fatal() << "Out of bounds function index " << i << "! (module has only "
+              << module->functions.size() << " functions)";
+    }
+    // Assumes imports are at the beginning
+    Name name = module->functions[i]->name;
+    extract(getPassRunner(), module, name);
+  }
+};
 
-Pass *createExtractFunctionPass() {
-  return new ExtractFunction();
-}
+// declare passes
+
+Pass* createExtractFunctionPass() { return new ExtractFunction(); }
+Pass* createExtractFunctionIndexPass() { return new ExtractFunctionIndex(); }
 
 } // namespace wasm
-

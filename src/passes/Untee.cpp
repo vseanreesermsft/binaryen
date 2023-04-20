@@ -22,40 +22,34 @@
 // more effective.
 //
 
-#include <wasm.h>
 #include <pass.h>
 #include <wasm-builder.h>
+#include <wasm.h>
 
 namespace wasm {
 
 struct Untee : public WalkerPass<PostWalker<Untee>> {
   bool isFunctionParallel() override { return true; }
 
-  Pass* create() override { return new Untee; }
+  std::unique_ptr<Pass> create() override { return std::make_unique<Untee>(); }
 
-  void visitSetLocal(SetLocal *curr) {
+  void visitLocalSet(LocalSet* curr) {
     if (curr->isTee()) {
-      if (curr->value->type == unreachable) {
+      if (curr->value->type == Type::unreachable) {
         // we don't reach the tee, just remove it
         replaceCurrent(curr->value);
       } else {
         // a normal tee. replace with set and get
         Builder builder(*getModule());
-        replaceCurrent(
-          builder.makeSequence(
-            curr,
-            builder.makeGetLocal(curr->index, curr->value->type)
-          )
-        );
-        curr->setTee(false);
+        LocalGet* get = builder.makeLocalGet(
+          curr->index, getFunction()->getLocalType(curr->index));
+        replaceCurrent(builder.makeSequence(curr, get));
+        curr->makeSet();
       }
     }
   }
 };
 
-Pass *createUnteePass() {
-  return new Untee();
-}
+Pass* createUnteePass() { return new Untee(); }
 
 } // namespace wasm
-

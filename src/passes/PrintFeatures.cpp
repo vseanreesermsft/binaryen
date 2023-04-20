@@ -18,22 +18,22 @@
 // Print out the feature options corresponding to enabled features
 //
 
-#include "wasm.h"
-#include "wasm-features.h"
 #include "pass.h"
+#include "wasm-features.h"
+#include "wasm.h"
 
 namespace wasm {
 
 struct PrintFeatures : public Pass {
-  void run(PassRunner* runner, Module* module) override {
+  bool modifiesBinaryenIR() override { return false; }
+
+  void run(Module* module) override {
     module->features.iterFeatures([](FeatureSet::Feature f) {
       std::cout << "--enable-" << FeatureSet::toString(f) << std::endl;
     });
   }
 };
 
-Pass* createPrintFeaturesPass() {
-  return new PrintFeatures();
-}
+Pass* createPrintFeaturesPass() { return new PrintFeatures(); }
 
 } // namespace wasm

@@ -17,11 +17,10 @@
 #ifndef wasm_ir_literal_utils_h
 #define wasm_ir_literal_utils_h
 
+#include "wasm-builder.h"
 #include "wasm.h"
 
-namespace wasm {
-
-namespace LiteralUtils {
+namespace wasm::LiteralUtils {
 
 inline Expression* makeFromInt32(int32_t x, Type type, Module& wasm) {
   auto* ret = wasm.allocator.alloc<Const>();
@@ -30,12 +29,31 @@ inline Expression* makeFromInt32(int32_t x, Type type, Module& wasm) {
   return ret;
 }
 
-inline Expression* makeZero(Type type, Module& wasm) {
-  return makeFromInt32(0, type, wasm);
+inline bool canMakeZero(Type type) {
+  if (type.isNonNullable()) {
+    return false;
+  }
+  if (type.isTuple()) {
+    for (auto t : type) {
+      if (t.isNonNullable()) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
-} // namespace LiteralUtils
+inline Expression* makeZero(Type type, Module& wasm) {
+  assert(canMakeZero(type));
+  // TODO: Remove this function once V8 supports v128.const
+  // (https://bugs.chromium.org/p/v8/issues/detail?id=8460)
+  Builder builder(wasm);
+  if (type == Type::v128) {
+    return builder.makeUnary(SplatVecI32x4, builder.makeConst(int32_t(0)));
+  }
+  return builder.makeConstantExpression(Literal::makeZeros(type));
+}
 
-} // namespace wasm
+} // namespace wasm::LiteralUtils
 
 #endif // wasm_ir_literal_utils_h

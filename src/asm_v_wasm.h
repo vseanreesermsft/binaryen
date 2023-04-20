@@ -17,32 +17,15 @@
 #ifndef wasm_asm_v_wasm_h
 #define wasm_asm_v_wasm_h
 
-#include "mixed_arena.h"
 #include "emscripten-optimizer/optimizer.h"
 #include "wasm.h"
 
 namespace wasm {
 
-Type asmToWasmType(AsmType asmType);
-
-AsmType wasmToAsmType(Type type);
+JsType wasmToJsType(Type type);
 
 char getSig(Type type);
-
-std::string getSig(const FunctionType *type);
-
-std::string getSig(Function *func);
-
-template<typename T,
-         typename std::enable_if<std::is_base_of<Expression, T>::value>::type* = nullptr>
-std::string getSig(T *call) {
-  std::string ret;
-  ret += getSig(call->type);
-  for (auto operand : call->operands) {
-    ret += getSig(operand->type);
-  }
-  return ret;
-}
+std::string getSig(Type results, Type params);
 
 template<typename ListType>
 std::string getSig(Type result, const ListType& operands) {
@@ -63,15 +46,6 @@ std::string getSigFromStructs(Type result, const ListType& operands) {
   }
   return ret;
 }
-
-Type sigToType(char sig);
-
-FunctionType sigToFunctionType(std::string sig);
-
-FunctionType* ensureFunctionType(std::string sig, Module* wasm);
-
-// converts an f32 to an f64 if necessary
-Expression* ensureDouble(Expression* expr, MixedArena& allocator);
 
 } // namespace wasm
 

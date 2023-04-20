@@ -21,7 +21,7 @@
 namespace wasm {
 
 static Type getValueType(Expression* value) {
-  return value ? value->type : none;
+  return value ? value->type : Type::none;
 }
 
 namespace {
@@ -41,62 +41,30 @@ void handleBranchForVisitBlock(T* curr, Name name, Module* module) {
 
 void ReFinalize::visitBlock(Block* curr) {
   if (curr->list.size() == 0) {
-    curr->type = none;
+    curr->type = Type::none;
     return;
   }
-  auto old = curr->type;
-  // do this quickly, without any validation
-  // last element determines type
-  curr->type = curr->list.back()->type;
-  // if concrete, it doesn't matter if we have an unreachable child, and we
-  // don't need to look at breaks
-  if (isConcreteType(curr->type)) {
-    // make sure our branches make sense for us - we may have just made ourselves
-    // concrete for a value flowing out, while branches did not send a value. such
-    // branches could not have been actually taken before, that is, there were in
-    // unreachable code, but we do still need to fix them up here.
-    if (!isConcreteType(old)) {
-      auto iter = breakValues.find(curr->name);
-      if (iter != breakValues.end()) {
-        // there is a break to here
-        auto type = iter->second;
-        if (type == none) {
-          // we need to fix this up. set the values to unreachables
-          for (auto* br : FindAll<Break>(curr).list) {
-            handleBranchForVisitBlock(br, curr->name, getModule());
-          }
-          for (auto* sw : FindAll<Switch>(curr).list) {
-            handleBranchForVisitBlock(sw, curr->name, getModule());
-          }
-          // and we need to propagate that type out, re-walk
-          ReFinalize fixer;
-          fixer.setModule(getModule());
-          Expression* temp = curr;
-          fixer.walk(temp);
-          assert(temp == curr);
-        }
-      }
-    }
-    return;
-  }
-  // otherwise, we have no final fallthrough element to determine the type,
-  // could be determined by breaks
   if (curr->name.is()) {
-    auto iter = breakValues.find(curr->name);
-    if (iter != breakValues.end()) {
-      // there is a break to here
-      auto type = iter->second;
-      assert(type != unreachable); // we would have removed such branches
-      curr->type = type;
+    auto iter = breakTypes.find(curr->name);
+    if (iter != breakTypes.end()) {
+      // Set the type to be a supertype of the branch types and the flowed-out
+      // type. TODO: calculate proper LUBs to compute a new correct type in this
+      // situation.
+      auto& types = iter->second;
+      types.insert(curr->list.back()->type);
+      curr->type = Type::getLeastUpperBound(types);
       return;
     }
   }
-  if (curr->type == unreachable) return;
+  curr->type = curr->list.back()->type;
+  if (curr->type == Type::unreachable) {
+    return;
+  }
   // type is none, but we might be unreachable
-  if (curr->type == none) {
+  if (curr->type == Type::none) {
     for (auto* child : curr->list) {
-      if (child->type == unreachable) {
-        curr->type = unreachable;
+      if (child->type == Type::unreachable) {
+        curr->type = Type::unreachable;
         break;
       }
     }
@@ -107,7 +75,7 @@ void ReFinalize::visitLoop(Loop* curr) { curr->finalize(); }
 void ReFinalize::visitBreak(Break* curr) {
   curr->finalize();
   auto valueType = getValueType(curr->value);
-  if (valueType == unreachable) {
+  if (valueType == Type::unreachable) {
     replaceUntaken(curr->value, curr->condition);
   } else {
     updateBreakValueType(curr->name, valueType);
@@ -116,7 +84,7 @@ void ReFinalize::visitBreak(Break* curr) {
 void ReFinalize::visitSwitch(Switch* curr) {
   curr->finalize();
   auto valueType = getValueType(curr->value);
-  if (valueType == unreachable) {
+  if (valueType == Type::unreachable) {
     replaceUntaken(curr->value, curr->condition);
   } else {
     for (auto target : curr->targets) {
@@ -127,21 +95,26 @@ void ReFinalize::visitSwitch(Switch* curr) {
 }
 void ReFinalize::visitCall(Call* curr) { curr->finalize(); }
 void ReFinalize::visitCallIndirect(CallIndirect* curr) { curr->finalize(); }
-void ReFinalize::visitGetLocal(GetLocal* curr) { curr->finalize(); }
-void ReFinalize::visitSetLocal(SetLocal* curr) { curr->finalize(); }
-void ReFinalize::visitGetGlobal(GetGlobal* curr) { curr->finalize(); }
-void ReFinalize::visitSetGlobal(SetGlobal* curr) { curr->finalize(); }
+void ReFinalize::visitLocalGet(LocalGet* curr) { curr->finalize(); }
+void ReFinalize::visitLocalSet(LocalSet* curr) { curr->finalize(); }
+void ReFinalize::visitGlobalGet(GlobalGet* curr) { curr->finalize(); }
+void ReFinalize::visitGlobalSet(GlobalSet* curr) { curr->finalize(); }
 void ReFinalize::visitLoad(Load* curr) { curr->finalize(); }
 void ReFinalize::visitStore(Store* curr) { curr->finalize(); }
 void ReFinalize::visitAtomicRMW(AtomicRMW* curr) { curr->finalize(); }
 void ReFinalize::visitAtomicCmpxchg(AtomicCmpxchg* curr) { curr->finalize(); }
 void ReFinalize::visitAtomicWait(AtomicWait* curr) { curr->finalize(); }
 void ReFinalize::visitAtomicNotify(AtomicNotify* curr) { curr->finalize(); }
+void ReFinalize::visitAtomicFence(AtomicFence* curr) { curr->finalize(); }
 void ReFinalize::visitSIMDExtract(SIMDExtract* curr) { curr->finalize(); }
 void ReFinalize::visitSIMDReplace(SIMDReplace* curr) { curr->finalize(); }
 void ReFinalize::visitSIMDShuffle(SIMDShuffle* curr) { curr->finalize(); }
-void ReFinalize::visitSIMDBitselect(SIMDBitselect* curr) { curr->finalize(); }
+void ReFinalize::visitSIMDTernary(SIMDTernary* curr) { curr->finalize(); }
 void ReFinalize::visitSIMDShift(SIMDShift* curr) { curr->finalize(); }
+void ReFinalize::visitSIMDLoad(SIMDLoad* curr) { curr->finalize(); }
+void ReFinalize::visitSIMDLoadStoreLane(SIMDLoadStoreLane* curr) {
+  curr->finalize();
+}
 void ReFinalize::visitMemoryInit(MemoryInit* curr) { curr->finalize(); }
 void ReFinalize::visitDataDrop(DataDrop* curr) { curr->finalize(); }
 void ReFinalize::visitMemoryCopy(MemoryCopy* curr) { curr->finalize(); }
@@ -152,36 +125,93 @@ void ReFinalize::visitBinary(Binary* curr) { curr->finalize(); }
 void ReFinalize::visitSelect(Select* curr) { curr->finalize(); }
 void ReFinalize::visitDrop(Drop* curr) { curr->finalize(); }
 void ReFinalize::visitReturn(Return* curr) { curr->finalize(); }
-void ReFinalize::visitHost(Host* curr) { curr->finalize(); }
+void ReFinalize::visitMemorySize(MemorySize* curr) { curr->finalize(); }
+void ReFinalize::visitMemoryGrow(MemoryGrow* curr) { curr->finalize(); }
+void ReFinalize::visitRefNull(RefNull* curr) { curr->finalize(); }
+void ReFinalize::visitRefIsNull(RefIsNull* curr) { curr->finalize(); }
+void ReFinalize::visitRefFunc(RefFunc* curr) {
+  // TODO: should we look up the function and update the type from there? This
+  // could handle a change to the function's type, but is also not really what
+  // this class has been meant to do.
+}
+void ReFinalize::visitRefEq(RefEq* curr) { curr->finalize(); }
+void ReFinalize::visitTableGet(TableGet* curr) { curr->finalize(); }
+void ReFinalize::visitTableSet(TableSet* curr) { curr->finalize(); }
+void ReFinalize::visitTableSize(TableSize* curr) { curr->finalize(); }
+void ReFinalize::visitTableGrow(TableGrow* curr) { curr->finalize(); }
+void ReFinalize::visitTry(Try* curr) { curr->finalize(); }
+void ReFinalize::visitThrow(Throw* curr) { curr->finalize(); }
+void ReFinalize::visitRethrow(Rethrow* curr) { curr->finalize(); }
 void ReFinalize::visitNop(Nop* curr) { curr->finalize(); }
 void ReFinalize::visitUnreachable(Unreachable* curr) { curr->finalize(); }
-
-void ReFinalize::visitFunction(Function* curr) {
-  // we may have changed the body from unreachable to none, which might be bad
-  // if the function has a return value
-  if (curr->result != none && curr->body->type == none) {
-    Builder builder(*getModule());
-    curr->body = builder.blockify(curr->body, builder.makeUnreachable());
+void ReFinalize::visitPop(Pop* curr) { curr->finalize(); }
+void ReFinalize::visitTupleMake(TupleMake* curr) { curr->finalize(); }
+void ReFinalize::visitTupleExtract(TupleExtract* curr) { curr->finalize(); }
+void ReFinalize::visitI31New(I31New* curr) { curr->finalize(); }
+void ReFinalize::visitI31Get(I31Get* curr) { curr->finalize(); }
+void ReFinalize::visitCallRef(CallRef* curr) { curr->finalize(); }
+void ReFinalize::visitRefTest(RefTest* curr) { curr->finalize(); }
+void ReFinalize::visitRefCast(RefCast* curr) { curr->finalize(); }
+void ReFinalize::visitBrOn(BrOn* curr) {
+  curr->finalize();
+  if (curr->type == Type::unreachable) {
+    replaceUntaken(curr->ref, nullptr);
+  } else {
+    updateBreakValueType(curr->name, curr->getSentType());
   }
 }
+void ReFinalize::visitStructNew(StructNew* curr) { curr->finalize(); }
+void ReFinalize::visitStructGet(StructGet* curr) { curr->finalize(); }
+void ReFinalize::visitStructSet(StructSet* curr) { curr->finalize(); }
+void ReFinalize::visitArrayNew(ArrayNew* curr) { curr->finalize(); }
+void ReFinalize::visitArrayNewSeg(ArrayNewSeg* curr) { curr->finalize(); }
+void ReFinalize::visitArrayInit(ArrayInit* curr) { curr->finalize(); }
+void ReFinalize::visitArrayGet(ArrayGet* curr) { curr->finalize(); }
+void ReFinalize::visitArraySet(ArraySet* curr) { curr->finalize(); }
+void ReFinalize::visitArrayLen(ArrayLen* curr) { curr->finalize(); }
+void ReFinalize::visitArrayCopy(ArrayCopy* curr) { curr->finalize(); }
+void ReFinalize::visitRefAs(RefAs* curr) { curr->finalize(); }
+void ReFinalize::visitStringNew(StringNew* curr) { curr->finalize(); }
+void ReFinalize::visitStringConst(StringConst* curr) { curr->finalize(); }
+void ReFinalize::visitStringMeasure(StringMeasure* curr) { curr->finalize(); }
+void ReFinalize::visitStringEncode(StringEncode* curr) { curr->finalize(); }
+void ReFinalize::visitStringConcat(StringConcat* curr) { curr->finalize(); }
+void ReFinalize::visitStringEq(StringEq* curr) { curr->finalize(); }
+void ReFinalize::visitStringAs(StringAs* curr) { curr->finalize(); }
+void ReFinalize::visitStringWTF8Advance(StringWTF8Advance* curr) {
+  curr->finalize();
+}
+void ReFinalize::visitStringWTF16Get(StringWTF16Get* curr) { curr->finalize(); }
+void ReFinalize::visitStringIterNext(StringIterNext* curr) { curr->finalize(); }
+void ReFinalize::visitStringIterMove(StringIterMove* curr) { curr->finalize(); }
+void ReFinalize::visitStringSliceWTF(StringSliceWTF* curr) { curr->finalize(); }
+void ReFinalize::visitStringSliceIter(StringSliceIter* curr) {
+  curr->finalize();
+}
 
-void ReFinalize::visitFunctionType(FunctionType* curr) { WASM_UNREACHABLE(); }
-void ReFinalize::visitExport(Export* curr) { WASM_UNREACHABLE(); }
-void ReFinalize::visitGlobal(Global* curr) { WASM_UNREACHABLE(); }
-void ReFinalize::visitTable(Table* curr) { WASM_UNREACHABLE(); }
-void ReFinalize::visitMemory(Memory* curr) { WASM_UNREACHABLE(); }
-void ReFinalize::visitModule(Module* curr) { WASM_UNREACHABLE(); }
+void ReFinalize::visitExport(Export* curr) { WASM_UNREACHABLE("unimp"); }
+void ReFinalize::visitGlobal(Global* curr) { WASM_UNREACHABLE("unimp"); }
+void ReFinalize::visitTable(Table* curr) { WASM_UNREACHABLE("unimp"); }
+void ReFinalize::visitElementSegment(ElementSegment* curr) {
+  WASM_UNREACHABLE("unimp");
+}
+void ReFinalize::visitMemory(Memory* curr) { WASM_UNREACHABLE("unimp"); }
+void ReFinalize::visitDataSegment(DataSegment* curr) {
+  WASM_UNREACHABLE("unimp");
+}
+void ReFinalize::visitTag(Tag* curr) { WASM_UNREACHABLE("unimp"); }
+void ReFinalize::visitModule(Module* curr) { WASM_UNREACHABLE("unimp"); }
 
 void ReFinalize::updateBreakValueType(Name name, Type type) {
-  if (type != unreachable || breakValues.count(name) == 0) {
-    breakValues[name] = type;
+  if (type != Type::unreachable) {
+    breakTypes[name].insert(type);
   }
 }
 
 // Replace an untaken branch/switch with an unreachable value.
 // A condition may also exist and may or may not be unreachable.
 void ReFinalize::replaceUntaken(Expression* value, Expression* condition) {
-  assert(value->type == unreachable);
+  assert(value->type == Type::unreachable);
   auto* replacement = value;
   if (condition) {
     Builder builder(*getModule());
@@ -194,11 +224,11 @@ void ReFinalize::replaceUntaken(Expression* value, Expression* condition) {
     // the value is unreachable, and necessary since the type of
     // the condition did not have an impact before (the break/switch
     // type was unreachable), and might not fit in.
-    if (isConcreteType(condition->type)) {
+    if (condition->type.isConcrete()) {
       condition = builder.makeDrop(condition);
     }
     replacement = builder.makeSequence(value, condition);
-    assert(replacement->type);
+    assert(replacement->type.isBasic() && "Basic type expected");
   }
   replaceCurrent(replacement);
 }

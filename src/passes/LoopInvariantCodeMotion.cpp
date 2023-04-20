@@ -24,21 +24,24 @@
 
 #include <unordered_map>
 
-#include "wasm.h"
-#include "pass.h"
-#include "wasm-builder.h"
-#include "ir/local-graph.h"
 #include "ir/effects.h"
 #include "ir/find_all.h"
+#include "ir/local-graph.h"
+#include "pass.h"
+#include "wasm-builder.h"
+#include "wasm.h"
 
 namespace wasm {
 
-struct LoopInvariantCodeMotion : public WalkerPass<ExpressionStackWalker<LoopInvariantCodeMotion>> {
+struct LoopInvariantCodeMotion
+  : public WalkerPass<ExpressionStackWalker<LoopInvariantCodeMotion>> {
   bool isFunctionParallel() override { return true; }
 
-  Pass* create() override { return new LoopInvariantCodeMotion; }
+  std::unique_ptr<Pass> create() override {
+    return std::make_unique<LoopInvariantCodeMotion>();
+  }
 
-  typedef std::unordered_set<SetLocal*> LoopSets;
+  using LoopSets = std::unordered_set<LocalSet*>;
 
   // main entry point
 
@@ -59,13 +62,13 @@ struct LoopInvariantCodeMotion : public WalkerPass<ExpressionStackWalker<LoopInv
     // Accumulate effects of things we can't move out - things
     // we move out later must cross them, so we must verify it
     // is ok to do so.
-    EffectAnalyzer effectsSoFar(getPassOptions());
+    EffectAnalyzer effectsSoFar(getPassOptions(), *getModule());
     // The loop's total effects also matter. For example, a store
     // in the loop means we can't move a load outside.
     // FIXME: we look at the loop "tail" area too, after the last
     //        possible branch back, which can cause false positives
     //        for bad effect interactions.
-    EffectAnalyzer loopEffects(getPassOptions(), loop);
+    EffectAnalyzer loopEffects(getPassOptions(), *getModule(), loop);
     // Note all the sets in each loop, and how many per index. Currently
     // EffectAnalyzer can't do that, and we need it to know if we
     // can move a set out of the loop (if there is another set
@@ -74,10 +77,9 @@ struct LoopInvariantCodeMotion : public WalkerPass<ExpressionStackWalker<LoopInv
     // FIXME: also the loop tail issue from above.
     auto numLocals = getFunction()->getNumLocals();
     std::vector<Index> numSetsForIndex(numLocals);
-    std::fill(numSetsForIndex.begin(), numSetsForIndex.end(), 0);
     LoopSets loopSets;
     {
-      FindAll<SetLocal> finder(loop);
+      FindAll<LocalSet> finder(loop);
       for (auto* set : finder.list) {
         numSetsForIndex[set->index]++;
         loopSets.insert(set);
@@ -106,34 +108,39 @@ struct LoopInvariantCodeMotion : public WalkerPass<ExpressionStackWalker<LoopInv
         // a branch to it anyhow, so we would stop before that point anyhow.
       }
       // If this may branch, we are done.
-      EffectAnalyzer effects(getPassOptions(), curr);
-      if (effects.branches) {
+      EffectAnalyzer effects(getPassOptions(), *getModule(), curr);
+      if (effects.transfersControlFlow()) {
         break;
       }
       if (interestingToMove(curr)) {
         // Let's see if we can move this out.
-        // Global side effects would prevent this - we might end up
+        // Global state changes would prevent this - we might end up
         // executing them just once.
         // And we must also move across anything not moved out already,
         // so check for issues there too.
         // The rest of the loop's effects matter too, we must also
         // take into account global state like interacting loads and
         // stores.
-        bool unsafeToMove = effects.hasGlobalSideEffects() ||
+        bool unsafeToMove = effects.writesGlobalState() ||
                             effectsSoFar.invalidates(effects) ||
-                            (effects.noticesGlobalSideEffects() &&
-                             loopEffects.hasGlobalSideEffects());
+                            (effects.readsMutableGlobalState() &&
+                             loopEffects.writesGlobalState());
+        // TODO: look into optimizing this with exceptions. for now, disallow
+        if (effects.throws() || loopEffects.throws()) {
+          unsafeToMove = true;
+        }
         if (!unsafeToMove) {
           // So far so good. Check if our local dependencies are all
           // outside of the loop, in which case everything is good -
           // either they are before the loop and constant for us, or
           // they are after and don't matter.
-          if (effects.localsRead.empty() || !hasGetDependingOnLoopSet(curr, loopSets)) {
-            // We have checked if our gets are influenced by sets in the loop, and
-            // must also check if our sets interfere with them. To do so, assume
-            // temporarily that we are moving curr out; see if any sets remain for
-            // its indexes.
-            FindAll<SetLocal> currSets(curr);
+          if (effects.localsRead.empty() ||
+              !hasGetDependingOnLoopSet(curr, loopSets)) {
+            // We have checked if our gets are influenced by sets in the loop,
+            // and must also check if our sets interfere with them. To do so,
+            // assume temporarily that we are moving curr out; see if any sets
+            // remain for its indexes.
+            FindAll<LocalSet> currSets(curr);
             for (auto* set : currSets.list) {
               assert(numSetsForIndex[set->index] > 0);
               numSetsForIndex[set->index]--;
@@ -187,8 +194,8 @@ struct LoopInvariantCodeMotion : public WalkerPass<ExpressionStackWalker<LoopInv
   bool interestingToMove(Expression* curr) {
     // In theory we could consider blocks, but then heavy nesting of
     // switch patterns would be heavy, and almost always pointless.
-    if (curr->type != none || curr->is<Nop>() || curr->is<Block>()
-                           || curr->is<Loop>()) {
+    if (curr->type != Type::none || curr->is<Nop>() || curr->is<Block>() ||
+        curr->is<Loop>()) {
       return false;
     }
     // Don't move copies (set of a get, or set of a tee of a get, etc.),
@@ -203,13 +210,15 @@ struct LoopInvariantCodeMotion : public WalkerPass<ExpressionStackWalker<LoopInv
     // it is beneficial to run this pass later on (but that has downsides
     // too, as with more nesting moving code is harder - so something
     // like -O --flatten --licm -O may be best).
-    if (auto* set = curr->dynCast<SetLocal>()) {
+    if (auto* set = curr->dynCast<LocalSet>()) {
       while (1) {
-        auto* next = set->value->dynCast<SetLocal>();
-        if (!next) break;
+        auto* next = set->value->dynCast<LocalSet>();
+        if (!next) {
+          break;
+        }
         set = next;
       }
-      if (set->value->is<GetLocal>() || set->value->is<Const>()) {
+      if (set->value->is<LocalGet>() || set->value->is<Const>()) {
         return false;
       }
     }
@@ -217,13 +226,15 @@ struct LoopInvariantCodeMotion : public WalkerPass<ExpressionStackWalker<LoopInv
   }
 
   bool hasGetDependingOnLoopSet(Expression* curr, LoopSets& loopSets) {
-    FindAll<GetLocal> gets(curr);
+    FindAll<LocalGet> gets(curr);
     for (auto* get : gets.list) {
       auto& sets = localGraph->getSetses[get];
       for (auto* set : sets) {
         // nullptr means a parameter or zero-init value;
         // no danger to us.
-        if (!set) continue;
+        if (!set) {
+          continue;
+        }
         // Check if the set is in the loop. If not, it's either before,
         // which is fine, or after, which is also fine - moving curr
         // to just outside the loop will preserve those relationships.
@@ -238,9 +249,8 @@ struct LoopInvariantCodeMotion : public WalkerPass<ExpressionStackWalker<LoopInv
   }
 };
 
-Pass *createLoopInvariantCodeMotionPass() {
+Pass* createLoopInvariantCodeMotionPass() {
   return new LoopInvariantCodeMotion();
 }
 
 } // namespace wasm
-

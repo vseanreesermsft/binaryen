@@ -24,22 +24,24 @@
 //    --flatten --dfo -Os
 //
 
-#include "wasm.h"
-#include "pass.h"
-#include "wasm-builder.h"
-#include "ir/flat.h"
-#include "ir/utils.h"
-#include "dataflow/node.h"
 #include "dataflow/graph.h"
+#include "dataflow/node.h"
 #include "dataflow/users.h"
 #include "dataflow/utils.h"
+#include "ir/flat.h"
+#include "ir/utils.h"
+#include "pass.h"
+#include "wasm-builder.h"
+#include "wasm.h"
 
 namespace wasm {
 
 struct DataFlowOpts : public WalkerPass<PostWalker<DataFlowOpts>> {
   bool isFunctionParallel() override { return true; }
 
-  Pass* create() override { return new DataFlowOpts; }
+  std::unique_ptr<Pass> create() override {
+    return std::make_unique<DataFlowOpts>();
+  }
 
   DataFlow::Users nodeUsers;
 
@@ -59,8 +61,8 @@ struct DataFlowOpts : public WalkerPass<PostWalker<DataFlowOpts>> {
       workLeft.insert(node.get()); // we should try to optimize each node
     }
     while (!workLeft.empty()) {
-      //std::cout << "\n\ndump before work iter\n";
-      //dump(graph, std::cout);
+      // std::cout << "\n\ndump before work iter\n";
+      // dump(graph, std::cout);
       auto iter = workLeft.begin();
       auto* node = *iter;
       workLeft.erase(iter);
@@ -81,9 +83,13 @@ struct DataFlowOpts : public WalkerPass<PostWalker<DataFlowOpts>> {
   }
 
   void workOn(DataFlow::Node* node) {
-    if (node->isConst()) return;
+    if (node->isConst()) {
+      return;
+    }
     // If there are no uses, there is no point to work.
-    if (nodeUsers.getNumUses(node) == 0) return;
+    if (nodeUsers.getNumUses(node) == 0) {
+      return;
+    }
     // Optimize: Look for nodes that we can easily convert into
     // something simpler.
     // TODO: we can expressionify and run full normal opts on that,
@@ -99,7 +105,7 @@ struct DataFlowOpts : public WalkerPass<PostWalker<DataFlowOpts>> {
       assert(!node->isConst());
       // If this is a concrete value (not e.g. an eqz of unreachable),
       // it can definitely be precomputed into a constant.
-      if (isConcreteType(node->expr->type)) {
+      if (node->expr->type.isConcrete()) {
         // This can be precomputed.
         // TODO not just all-constant inputs? E.g. i32.mul of 0 and X.
         optimizeExprToConstant(node);
@@ -110,8 +116,9 @@ struct DataFlowOpts : public WalkerPass<PostWalker<DataFlowOpts>> {
   void optimizeExprToConstant(DataFlow::Node* node) {
     assert(node->isExpr());
     assert(!node->isConst());
-    //std::cout << "will optimize an Expr of all constant inputs. before" << '\n';
-    //dump(node, std::cout);
+    // std::cout << "will optimize an Expr of all constant inputs. before" <<
+    //              '\n';
+    // dump(node, std::cout);
     auto* expr = node->expr;
     // First, note that some of the expression's children may be
     // local.gets that we inferred during SSA analysis as constant.
@@ -132,15 +139,18 @@ struct DataFlowOpts : public WalkerPass<PostWalker<DataFlowOpts>> {
     Module temp;
     // XXX we should copy expr here, in principle, and definitely will need to
     //     when we do arbitrarily regenerated expressions
-    auto* func = Builder(temp).makeFunction("temp", std::vector<Type>{}, none, std::vector<Type>{}, expr);
+    std::unique_ptr<Function> tempFunc(Builder(temp).makeFunction(
+      "temp", Signature(Type::none, Type::none), {}, expr));
     PassRunner runner(&temp);
     runner.setIsNested(true);
     runner.add("precompute");
-    runner.runOnFunction(func);
+    runner.runOnFunction(tempFunc.get());
     // Get the optimized thing
-    auto* result = func->body;
+    auto* result = tempFunc->body;
     // It may not be a constant, e.g. 0 / 0 does not optimize to 0
-    if (!result->is<Const>()) return;
+    if (!result->is<Const>()) {
+      return;
+    }
     // All good, copy it.
     node->expr = Builder(*getModule()).makeConst(result->cast<Const>()->value);
     assert(node->isConst());
@@ -206,7 +216,8 @@ struct DataFlowOpts : public WalkerPass<PostWalker<DataFlowOpts>> {
           // should look into TODO
           break;
         }
-        default: WASM_UNREACHABLE();
+        default:
+          WASM_UNREACHABLE("unexpected dataflow node type");
       }
     }
     // No one is a user of this node after we replaced all the uses.
@@ -225,9 +236,8 @@ struct DataFlowOpts : public WalkerPass<PostWalker<DataFlowOpts>> {
         return &binary->left;
       } else if (index == 1) {
         return &binary->right;
-      } else {
-        WASM_UNREACHABLE();
       }
+      WASM_UNREACHABLE("unexpected index");
     } else if (auto* select = expr->dynCast<Select>()) {
       if (index == 0) {
         return &select->condition;
@@ -235,18 +245,13 @@ struct DataFlowOpts : public WalkerPass<PostWalker<DataFlowOpts>> {
         return &select->ifTrue;
       } else if (index == 2) {
         return &select->ifFalse;
-      } else {
-        WASM_UNREACHABLE();
       }
-    } else {
-      WASM_UNREACHABLE();
+      WASM_UNREACHABLE("unexpected index");
     }
+    WASM_UNREACHABLE("unexpected expression type");
   }
 };
 
-Pass *createDataFlowOptsPass() {
-  return new DataFlowOpts();
-}
+Pass* createDataFlowOptsPass() { return new DataFlowOpts(); }
 
 } // namespace wasm
-

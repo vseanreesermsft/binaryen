@@ -23,12 +23,12 @@ namespace wasm {
 
 // Find all instances of a certain node type
 
-template<typename T>
-struct FindAll {
+template<typename T> struct FindAll {
   std::vector<T*> list;
 
   FindAll(Expression* ast) {
-    struct Finder : public PostWalker<Finder, UnifiedExpressionVisitor<Finder>> {
+    struct Finder
+      : public PostWalker<Finder, UnifiedExpressionVisitor<Finder>> {
       std::vector<T*>* list;
       void visitExpression(Expression* curr) {
         if (curr->is<T>()) {
@@ -40,11 +40,14 @@ struct FindAll {
     finder.list = &list;
     finder.walk(ast);
   }
+
+  bool has() { return !list.empty(); }
 };
 
 // Find all pointers to instances of a certain node type
 
-struct PointerFinder : public PostWalker<PointerFinder, UnifiedExpressionVisitor<PointerFinder>> {
+struct PointerFinder
+  : public PostWalker<PointerFinder, UnifiedExpressionVisitor<PointerFinder>> {
   Expression::Id id;
   std::vector<Expression**>* list;
   void visitExpression(Expression* curr) {
@@ -54,13 +57,14 @@ struct PointerFinder : public PostWalker<PointerFinder, UnifiedExpressionVisitor
   }
 };
 
-template<typename T>
-struct FindAllPointers {
+template<typename T> struct FindAllPointers {
   std::vector<Expression**> list;
 
-  FindAllPointers(Expression* ast) {
+  // Note that a pointer may be to the function->body itself, so we must
+  // take \ast by reference.
+  FindAllPointers(Expression*& ast) {
     PointerFinder finder;
-    finder.id = T()._id;
+    finder.id = (Expression::Id)T::SpecificId;
     finder.list = &list;
     finder.walk(ast);
   }
@@ -69,4 +73,3 @@ struct FindAllPointers {
 } // namespace wasm
 
 #endif // wasm_ir_find_all_h
-

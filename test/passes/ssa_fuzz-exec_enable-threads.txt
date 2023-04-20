@@ -1,12 +1,11 @@
-[fuzz-exec] calling $func_0
-[fuzz-exec] note result: $func_0 => i32.const 16384
+[fuzz-exec] calling func_0
+[fuzz-exec] note result: func_0 => 16384
 (module
  (type $0 (func (result i32)))
- (type $1 (func))
  (memory $0 (shared 1 1))
  (table $0 0 0 funcref)
  (export "func_0" (func $0))
- (func $0 (; 0 ;) (type $0) (result i32)
+ (func $0 (result i32)
   (local $var$0 i32)
   (local $var$1 i32)
   (local $var$2 i32)
@@ -55,7 +54,7 @@
            )
            (i32.const 1)
           )
-          (block $block (result i32)
+          (block (result i32)
            (loop $label$15
             (if
              (i32.const 0)
@@ -71,10 +70,8 @@
                )
               )
              )
-             (block $block4
-              (br_if $label$15
-               (i32.const 0)
-              )
+             (br_if $label$15
+              (i32.const 0)
              )
             )
             (br_if $label$15
@@ -125,6 +122,6 @@
   )
  )
 )
-[fuzz-exec] calling $func_0
-[fuzz-exec] note result: $func_0 => i32.const 16384
-[fuzz-exec] comparing $func_0
+[fuzz-exec] calling func_0
+[fuzz-exec] note result: func_0 => 16384
+[fuzz-exec] comparing func_0

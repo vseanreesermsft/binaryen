@@ -17,89 +17,66 @@
 #ifndef _wasm_ir_hashed_h
 #define _wasm_ir_hashed_h
 
+#include "ir/utils.h"
 #include "support/hash.h"
 #include "wasm.h"
-#include "ir/utils.h"
+#include <functional>
 
 namespace wasm {
-
-// An expression with a cached hash value
-struct HashedExpression {
-  Expression* expr;
-  HashType hash;
-
-  HashedExpression(Expression* expr) : expr(expr) {
-    if (expr) {
-      hash = ExpressionAnalyzer::hash(expr);
-    }
-  }
-
-  HashedExpression(const HashedExpression& other) : expr(other.expr), hash(other.hash) {}
-};
-
-struct ExpressionHasher {
-  HashType operator()(const HashedExpression value) const {
-    return value.hash;
-  }
-};
-
-struct ExpressionComparer {
-  bool operator()(const HashedExpression a, const HashedExpression b) const {
-    if (a.hash != b.hash) return false;
-    return ExpressionAnalyzer::equal(a.expr, b.expr);
-  }
-};
-
-template<typename T>
-class HashedExpressionMap : public std::unordered_map<HashedExpression, T, ExpressionHasher, ExpressionComparer> {
-};
 
 // A pass that hashes all functions
 
 struct FunctionHasher : public WalkerPass<PostWalker<FunctionHasher>> {
   bool isFunctionParallel() override { return true; }
 
-  struct Map : public std::map<Function*, HashType> {};
+  bool modifiesBinaryenIR() override { return false; }
 
-  FunctionHasher(Map* output) : output(output) {}
+  struct Map : public std::map<Function*, size_t> {};
 
-  FunctionHasher* create() override {
-    return new FunctionHasher(output);
+  FunctionHasher(Map* output, ExpressionAnalyzer::ExprHasher customHasher)
+    : output(output), customHasher(customHasher) {}
+  FunctionHasher(Map* output)
+    : output(output), customHasher(ExpressionAnalyzer::nothingHasher) {}
+
+  std::unique_ptr<Pass> create() override {
+    return std::make_unique<FunctionHasher>(output, customHasher);
   }
 
   static Map createMap(Module* module) {
     Map hashes;
     for (auto& func : module->functions) {
-      hashes[func.get()] = 0; // ensure an entry for each function - we must not modify the map shape in parallel, just the values
+      // ensure an entry for each function - we must not modify the map shape in
+      // parallel, just the values
+      hashes[func.get()] = hash(0);
     }
     return hashes;
   }
 
   void doWalkFunction(Function* func) {
-    output->at(func) = hashFunction(func);
+    output->at(func) = flexibleHashFunction(func, customHasher);
   }
 
-  static HashType hashFunction(Function* func) {
-    HashType ret = 0;
-    ret = rehash(ret, (HashType)func->getNumParams());
-    for (auto type : func->params) {
-      ret = rehash(ret, (HashType)type);
-    }
-    ret = rehash(ret, (HashType)func->getNumVars());
+  static size_t
+  flexibleHashFunction(Function* func,
+                       ExpressionAnalyzer::ExprHasher customHasher) {
+    auto digest = hash(func->type);
     for (auto type : func->vars) {
-      ret = rehash(ret, (HashType)type);
+      rehash(digest, type.getID());
     }
-    ret = rehash(ret, (HashType)func->result);
-    ret = rehash(ret, HashType(func->type.is() ? std::hash<wasm::Name>{}(func->type) : HashType(0)));
-    ret = rehash(ret, (HashType)ExpressionAnalyzer::hash(func->body));
-    return ret;
+    hash_combine(digest,
+                 ExpressionAnalyzer::flexibleHash(func->body, customHasher));
+    return digest;
+  }
+
+  static size_t hashFunction(Function* func) {
+    return flexibleHashFunction(func, ExpressionAnalyzer::nothingHasher);
   }
 
 private:
   Map* output;
+  ExpressionAnalyzer::ExprHasher customHasher;
 };
 
 } // namespace wasm
 
 #endif // _wasm_ir_hashed_h
-

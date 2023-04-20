@@ -20,37 +20,59 @@
 #include <algorithm>
 #include <vector>
 
+#include "ir/iteration.h"
+#include "ir/module-utils.h"
 #include "literal.h"
 #include "wasm.h"
-#include "ir/module-utils.h"
 
-namespace wasm {
+namespace wasm::GlobalUtils {
 
-namespace GlobalUtils {
-  // find a global initialized to the value of an import, or null if no such global
-  inline Global* getGlobalInitializedToImport(Module& wasm, Name module, Name base) {
-    // find the import
-    Name imported;
-    ModuleUtils::iterImportedGlobals(wasm, [&](Global* import) {
-      if (import->module == module && import->base == base) {
-        imported = import->name;
-      }
-    });
-    if (imported.isNull()) return nullptr;
-    // find a global inited to it
-    Global* ret = nullptr;
-    ModuleUtils::iterDefinedGlobals(wasm, [&](Global* defined) {
-      if (auto* init = defined->init->dynCast<GetGlobal>()) {
-        if (init->name == imported) {
-          ret = defined;
-        }
-      }
-    });
-    return ret;
+// find a global initialized to the value of an import, or null if no such
+// global
+inline Global*
+getGlobalInitializedToImport(Module& wasm, Name module, Name base) {
+  // find the import
+  Name imported;
+  ModuleUtils::iterImportedGlobals(wasm, [&](Global* import) {
+    if (import->module == module && import->base == base) {
+      imported = import->name;
+    }
+  });
+  if (imported.isNull()) {
+    return nullptr;
   }
+  // find a global inited to it
+  Global* ret = nullptr;
+  ModuleUtils::iterDefinedGlobals(wasm, [&](Global* defined) {
+    if (auto* init = defined->init->dynCast<GlobalGet>()) {
+      if (init->name == imported) {
+        ret = defined;
+      }
+    }
+  });
+  return ret;
 }
 
-} // namespace wasm
+inline bool canInitializeGlobal(Expression* curr, FeatureSet features) {
+  if (auto* tuple = curr->dynCast<TupleMake>()) {
+    for (auto* op : tuple->operands) {
+      if (!canInitializeGlobal(op, features)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (Properties::isValidInConstantExpression(curr, features)) {
+    for (auto* child : ChildIterator(curr)) {
+      if (!canInitializeGlobal(child, features)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+} // namespace wasm::GlobalUtils
 
 #endif // wasm_ir_global_h
-

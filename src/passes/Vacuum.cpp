@@ -18,26 +18,37 @@
 // Removes obviously unneeded code
 //
 
-#include <wasm.h>
-#include <pass.h>
-#include <wasm-builder.h>
 #include <ir/block-utils.h>
 #include <ir/effects.h>
+#include <ir/iteration.h>
 #include <ir/literal-utils.h>
 #include <ir/type-updating.h>
 #include <ir/utils.h>
+#include <pass.h>
+#include <wasm-builder.h>
+#include <wasm.h>
 
 namespace wasm {
 
 struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
   bool isFunctionParallel() override { return true; }
 
-  Pass* create() override { return new Vacuum; }
+  std::unique_ptr<Pass> create() override { return std::make_unique<Vacuum>(); }
 
   TypeUpdater typeUpdater;
 
+  // The TypeUpdater class handles efficient updating of unreachability as we
+  // go, but we may also refine types, which requires refinalization.
+  bool refinalize = false;
+
   Expression* replaceCurrent(Expression* expression) {
     auto* old = getCurrent();
+    if (expression->type != old->type &&
+        expression->type != Type::unreachable) {
+      // We are changing this to a new type that is not unreachable, so it is a
+      // refinement that we need to use refinalize to propagate up.
+      refinalize = true;
+    }
     super::replaceCurrent(expression);
     // also update the type updater
     typeUpdater.noteReplacement(old, expression);
@@ -47,138 +58,93 @@ struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
   void doWalkFunction(Function* func) {
     typeUpdater.walk(func->body);
     walk(func->body);
+    if (refinalize) {
+      ReFinalize().walkFunctionInModule(func, getModule());
+    }
   }
 
-  // Returns nullptr if curr is dead, curr if it must stay as is, or another node if it can be replaced.
-  // Takes into account:
+  // Returns nullptr if curr is dead, curr if it must stay as is, or one of its
+  // children if it can be replaced. Takes into account:
+  //
   //  * The result may be used or unused.
-  //  * The type may or may not matter (a drop can drop anything, for example).
+  //  * The type may or may not matter.
+  //
+  // For example,
+  //
+  //  (drop
+  //   (i32.eqz
+  //    (call ..)))
+  //
+  // The drop means that the value is not used later. And while the call has
+  // side effects, the i32.eqz does not. So when we are called on the i32.eqz,
+  // and told the result does not matter, we can return the call. Note that in
+  // this case the type does not matter either, as drop doesn't care, and anyhow
+  // i32.eqz returns the same type as it receives. But for an expression that
+  // returns a different type, if the type matters then we cannot replace it.
   Expression* optimize(Expression* curr, bool resultUsed, bool typeMatters) {
     auto type = curr->type;
-    // An unreachable node must not be changed.
-    if (type == unreachable) return curr;
-    // We iterate on possible replacements. If a replacement changes the type, stop and go back.
+    // If the type is none, then we can never replace it with another type.
+    if (type == Type::none) {
+      typeMatters = true;
+    }
+    // An unreachable node must not be changed. DCE will remove those.
+    if (type == Type::unreachable) {
+      return curr;
+    }
+    // resultUsed only makes sense when the type is concrete
+    assert(!resultUsed || curr->type != Type::none);
+    // If we actually need the result, then we must not change anything.
+    // TODO: maybe there is something clever though?
+    if (resultUsed) {
+      return curr;
+    }
+    // We iterate on possible replacements.
     auto* prev = curr;
     while (1) {
+      // If a replacement changes the type, and the type matters, return the
+      // previous one and stop.
       if (typeMatters && curr->type != type) {
         return prev;
       }
       prev = curr;
-      switch (curr->_id) {
-        case Expression::Id::NopId: return nullptr; // never needed
-
-        case Expression::Id::BlockId: return curr; // not always needed, but handled in visitBlock()
-        case Expression::Id::IfId: return curr; // not always needed, but handled in visitIf()
-        case Expression::Id::LoopId: return curr; // not always needed, but handled in visitLoop()
-        case Expression::Id::DropId: return curr; // not always needed, but handled in visitDrop()
-
-        case Expression::Id::BreakId:
-        case Expression::Id::SwitchId:
-        case Expression::Id::CallId:
-        case Expression::Id::CallIndirectId:
-        case Expression::Id::SetLocalId:
-        case Expression::Id::StoreId:
-        case Expression::Id::ReturnId:
-        case Expression::Id::SetGlobalId:
-        case Expression::Id::HostId:
-        case Expression::Id::UnreachableId: return curr; // always needed
-
-        case Expression::Id::LoadId: {
-          // it is ok to remove a load if the result is not used, and it has no
-          // side effects (the load itself may trap, if we are not ignoring such things)
-          if (!resultUsed && !EffectAnalyzer(getPassOptions(), curr).hasSideEffects()) {
-            return curr->cast<Load>()->ptr;
-          }
-          return curr;
-        }
-        case Expression::Id::ConstId:
-        case Expression::Id::GetLocalId:
-        case Expression::Id::GetGlobalId: {
-          if (!resultUsed) return nullptr;
-          return curr;
-        }
-
-        case Expression::Id::UnaryId:
-        case Expression::Id::BinaryId:
-        case Expression::Id::SelectId: {
-          if (resultUsed) {
-            return curr; // used, keep it
-          }
-          // for unary, binary, and select, we need to check their arguments for side effects,
-          // as well as the node itself, as some unaries and binaries have implicit traps
-          if (auto* unary = curr->dynCast<Unary>()) {
-            EffectAnalyzer tester(getPassOptions());
-            tester.visitUnary(unary);
-            if (tester.hasSideEffects()) {
-              return curr;
-            }
-            if (EffectAnalyzer(getPassOptions(), unary->value).hasSideEffects()) {
-              curr = unary->value;
-              continue;
-            } else {
-              return nullptr;
-            }
-          } else if (auto* binary = curr->dynCast<Binary>()) {
-            EffectAnalyzer tester(getPassOptions());
-            tester.visitBinary(binary);
-            if (tester.hasSideEffects()) {
-              return curr;
-            }
-            if (EffectAnalyzer(getPassOptions(), binary->left).hasSideEffects()) {
-              if (EffectAnalyzer(getPassOptions(), binary->right).hasSideEffects()) {
-                return curr; // leave them
-              } else {
-                curr = binary->left;
-                continue;
-              }
-            } else {
-              if (EffectAnalyzer(getPassOptions(), binary->right).hasSideEffects()) {
-                curr = binary->right;
-                continue;
-              } else {
-                return nullptr;
-              }
-            }
-          } else {
-            // TODO: if two have side effects, we could replace the select with say an add?
-            auto* select = curr->cast<Select>();
-            if (EffectAnalyzer(getPassOptions(), select->ifTrue).hasSideEffects()) {
-              if (EffectAnalyzer(getPassOptions(), select->ifFalse).hasSideEffects()) {
-                return curr; // leave them
-              } else {
-                if (EffectAnalyzer(getPassOptions(), select->condition).hasSideEffects()) {
-                  return curr; // leave them
-                } else {
-                  curr = select->ifTrue;
-                  continue;
-                }
-              }
-            } else {
-              if (EffectAnalyzer(getPassOptions(), select->ifFalse).hasSideEffects()) {
-                if (EffectAnalyzer(getPassOptions(), select->condition).hasSideEffects()) {
-                  return curr; // leave them
-                } else {
-                  curr = select->ifFalse;
-                  continue;
-                }
-              } else {
-                if (EffectAnalyzer(getPassOptions(), select->condition).hasSideEffects()) {
-                  curr = select->condition;
-                  continue;
-                } else {
-                  return nullptr;
-                }
-              }
-            }
-          }
-        }
-
-        default: return curr; // assume needed
+      // Some instructions have special handling in visit*, and we should do
+      // nothing for them here.
+      if (curr->is<Drop>() || curr->is<Block>() || curr->is<If>() ||
+          curr->is<Loop>() || curr->is<Try>()) {
+        return curr;
       }
+      // Check if this expression itself has side effects, ignoring children.
+      EffectAnalyzer self(getPassOptions(), *getModule());
+      self.visit(curr);
+      if (self.hasUnremovableSideEffects()) {
+        return curr;
+      }
+      // The result isn't used, and this has no side effects itself, so we can
+      // get rid of it. However, the children may have side effects.
+      SmallVector<Expression*, 1> childrenWithEffects;
+      for (auto* child : ChildIterator(curr)) {
+        if (EffectAnalyzer(getPassOptions(), *getModule(), child)
+              .hasUnremovableSideEffects()) {
+          childrenWithEffects.push_back(child);
+        }
+      }
+      if (childrenWithEffects.empty()) {
+        return nullptr;
+      }
+      if (childrenWithEffects.size() == 1) {
+        // We know the result isn't used, and curr has no side effects, so we
+        // can skip curr and keep looking into the child.
+        curr = childrenWithEffects[0];
+        continue;
+      }
+      // TODO: with multiple children with side effects, we can perhaps figure
+      // out something clever, like a block with drops, or an i32.add for just
+      // two, etc.
+      return curr;
     }
   }
 
-  void visitBlock(Block *curr) {
+  void visitBlock(Block* curr) {
     // compress out nops and other dead code
     int skip = 0;
     auto& list = curr->list;
@@ -186,18 +152,26 @@ struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
     for (size_t z = 0; z < size; z++) {
       auto* child = list[z];
       // The last element may be used.
-      bool used = z == size - 1 &&
-                  isConcreteType(curr->type) &&
-                  ExpressionAnalyzer::isResultUsed(expressionStack, getFunction());
+      bool used =
+        z == size - 1 && curr->type.isConcrete() &&
+        ExpressionAnalyzer::isResultUsed(expressionStack, getFunction());
       auto* optimized = optimize(child, used, true);
       if (!optimized) {
-        if (isConcreteType(child->type)) {
-          // We can't just skip a final concrete element, even if it isn't used. Instead,
-          // replace it with something that's easy to optimize out (for example, code-folding
-          // can merge out identical zeros at the end of if arms).
-          optimized = LiteralUtils::makeZero(child->type, *getModule());
-        } else if (child->type == unreachable) {
-          // Don't try to optimize out an unreachable child (dce can do that properly).
+        auto childType = child->type;
+        if (childType.isConcrete()) {
+          if (LiteralUtils::canMakeZero(childType)) {
+            // We can't just skip a final concrete element, even if it isn't
+            // used. Instead, replace it with something that's easy to optimize
+            // out (for example, code-folding can merge out identical zeros at
+            // the end of if arms).
+            optimized = LiteralUtils::makeZero(childType, *getModule());
+          } else {
+            // Don't optimize it out.
+            optimized = child;
+          }
+        } else if (childType == Type::unreachable) {
+          // Don't try to optimize out an unreachable child (dce can do that
+          // properly).
           optimized = child;
         }
       }
@@ -214,7 +188,7 @@ struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
           list[z] = nullptr;
         }
         // if this is unreachable, the rest is dead code
-        if (list[z - skip]->type == unreachable && z < size - 1) {
+        if (list[z - skip]->type == Type::unreachable && z < size - 1) {
           for (Index i = z - skip + 1; i < list.size(); i++) {
             auto* remove = list[i];
             if (remove) {
@@ -232,7 +206,8 @@ struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
       list.resize(size - skip);
       typeUpdater.maybeUpdateTypeToUnreachable(curr);
     }
-    // the block may now be a trivial one that we can get rid of and just leave its contents
+    // the block may now be a trivial one that we can get rid of and just leave
+    // its contents
     replaceCurrent(BlockUtils::simplifyToContents(curr, this));
   }
 
@@ -260,7 +235,7 @@ struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
       return;
     }
     // if the condition is unreachable, just return it
-    if (curr->condition->type == unreachable) {
+    if (curr->condition->type == Type::unreachable) {
       typeUpdater.noteRecursiveRemoval(curr->ifTrue);
       if (curr->ifFalse) {
         typeUpdater.noteRecursiveRemoval(curr->ifFalse);
@@ -275,9 +250,11 @@ struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
       } else if (curr->ifTrue->is<Nop>()) {
         curr->ifTrue = curr->ifFalse;
         curr->ifFalse = nullptr;
-        curr->condition = Builder(*getModule()).makeUnary(EqZInt32, curr->condition);
+        curr->condition =
+          Builder(*getModule()).makeUnary(EqZInt32, curr->condition);
       } else if (curr->ifTrue->is<Drop>() && curr->ifFalse->is<Drop>()) {
-        // instead of dropping both sides, drop the if, if they are the same type
+        // instead of dropping both sides, drop the if, if they are the same
+        // type
         auto* left = curr->ifTrue->cast<Drop>()->value;
         auto* right = curr->ifFalse->cast<Drop>()->value;
         if (left->type == right->type) {
@@ -288,16 +265,17 @@ struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
         }
       }
     } else {
-      // no else
+      // This is an if without an else. If the body is empty, we do not need it.
       if (curr->ifTrue->is<Nop>()) {
-        // no nothing
         replaceCurrent(Builder(*getModule()).makeDrop(curr->condition));
       }
     }
   }
 
   void visitLoop(Loop* curr) {
-    if (curr->body->is<Nop>()) ExpressionManipulator::nop(curr);
+    if (curr->body->is<Nop>()) {
+      ExpressionManipulator::nop(curr);
+    }
   }
 
   void visitDrop(Drop* curr) {
@@ -308,37 +286,56 @@ struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
       return;
     }
     // a drop of a tee is a set
-    if (auto* set = curr->value->dynCast<SetLocal>()) {
+    if (auto* set = curr->value->dynCast<LocalSet>()) {
       assert(set->isTee());
-      set->setTee(false);
+      set->makeSet();
       replaceCurrent(set);
       return;
     }
-    // if we are dropping a block's return value, we might be able to remove it entirely
+
+    // If the value has no side effects, or it has side effects we can remove,
+    // do so. This basically means that if noTrapsHappen is set then we can
+    // use that assumption (that no trap actually happens at runtime) and remove
+    // a trapping value.
+    //
+    // TODO: A complete CFG analysis for noTrapsHappen mode, removing all code
+    //       that definitely reaches a trap, *even if* it has side effects.
+    //
+    // Note that we check the type here to avoid removing unreachable code - we
+    // leave that for DCE.
+    if (curr->type == Type::none &&
+        !EffectAnalyzer(getPassOptions(), *getModule(), curr)
+           .hasUnremovableSideEffects()) {
+      ExpressionManipulator::nop(curr);
+      return;
+    }
+
+    // if we are dropping a block's return value, we might be able to remove it
+    // entirely
     if (auto* block = curr->value->dynCast<Block>()) {
       auto* last = block->list.back();
       // note that the last element may be concrete but not the block, if the
-      // block has an unreachable element in the middle, making the block unreachable
-      // despite later elements and in particular the last
-      if (isConcreteType(last->type) && block->type == last->type) {
+      // block has an unreachable element in the middle, making the block
+      // unreachable despite later elements and in particular the last
+      if (last->type.isConcrete() && block->type == last->type) {
         last = optimize(last, false, false);
         if (!last) {
           // we may be able to remove this, if there are no brs
           bool canPop = true;
           if (block->name.is()) {
             BranchUtils::BranchSeeker seeker(block->name);
-            seeker.named = true;
             Expression* temp = block;
             seeker.walk(temp);
-            if (seeker.found && seeker.valueType != none) {
+            if (seeker.found && Type::hasLeastUpperBound(seeker.types)) {
               canPop = false;
             }
           }
           if (canPop) {
             block->list.back() = last;
             block->list.pop_back();
-            block->type = none;
-            // we don't need the drop anymore, let's see what we have left in the block
+            block->type = Type::none;
+            // we don't need the drop anymore, let's see what we have left in
+            // the block
             if (block->list.size() > 1) {
               replaceCurrent(block);
             } else if (block->list.size() == 1) {
@@ -351,40 +348,68 @@ struct Vacuum : public WalkerPass<ExpressionStackWalker<Vacuum>> {
         }
       }
     }
-    // sink a drop into an arm of an if-else if the other arm ends in an unreachable, as it if is a branch, this can make that branch optimizable and more vaccuming possible
+    // sink a drop into an arm of an if-else if the other arm ends in an
+    // unreachable, as it if is a branch, this can make that branch optimizable
+    // and more vaccuming possible
     auto* iff = curr->value->dynCast<If>();
-    if (iff && iff->ifFalse && isConcreteType(iff->type)) {
+    if (iff && iff->ifFalse && iff->type.isConcrete()) {
       // reuse the drop in both cases
-      if (iff->ifTrue->type == unreachable && isConcreteType(iff->ifFalse->type)) {
+      if (iff->ifTrue->type == Type::unreachable &&
+          iff->ifFalse->type.isConcrete()) {
         curr->value = iff->ifFalse;
         iff->ifFalse = curr;
-        iff->type = none;
+        iff->type = Type::none;
         replaceCurrent(iff);
-      } else if (iff->ifFalse->type == unreachable && isConcreteType(iff->ifTrue->type)) {
+      } else if (iff->ifFalse->type == Type::unreachable &&
+                 iff->ifTrue->type.isConcrete()) {
         curr->value = iff->ifTrue;
         iff->ifTrue = curr;
-        iff->type = none;
+        iff->type = Type::none;
         replaceCurrent(iff);
       }
     }
   }
 
+  void visitTry(Try* curr) {
+    // If try's body does not throw, the whole try-catch can be replaced with
+    // the try's body.
+    if (!EffectAnalyzer(getPassOptions(), *getModule(), curr->body).throws()) {
+      replaceCurrent(curr->body);
+      for (auto* catchBody : curr->catchBodies) {
+        typeUpdater.noteRecursiveRemoval(catchBody);
+      }
+      return;
+    }
+
+    // The try's body does throw. However, throwing may be the only thing it
+    // does, and if the try has a catch-all, then the entire try including
+    // children may have no effects. Note that this situation can only happen
+    // if we do have a catch-all, so avoid wasted work by checking that first.
+    // Also, we can't do this if a result is returned, so check the type.
+    if (curr->type == Type::none && curr->hasCatchAll() &&
+        !EffectAnalyzer(getPassOptions(), *getModule(), curr)
+           .hasUnremovableSideEffects()) {
+      typeUpdater.noteRecursiveRemoval(curr);
+      ExpressionManipulator::nop(curr);
+    }
+  }
+
   void visitFunction(Function* curr) {
-    auto* optimized = optimize(curr->body, curr->result != none, true);
+    auto* optimized =
+      optimize(curr->body, curr->getResults() != Type::none, true);
     if (optimized) {
       curr->body = optimized;
     } else {
       ExpressionManipulator::nop(curr->body);
     }
-    if (curr->result == none && !EffectAnalyzer(getPassOptions(), curr->body).hasSideEffects()) {
+    if (curr->getResults() == Type::none &&
+        !EffectAnalyzer(getPassOptions(), *getModule(), curr)
+           .hasUnremovableSideEffects()) {
       ExpressionManipulator::nop(curr->body);
     }
   }
 };
 
-Pass *createVacuumPass() {
-  return new Vacuum();
-}
+Pass* createVacuumPass() { return new Vacuum(); }
 
 } // namespace wasm
-

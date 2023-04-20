@@ -19,24 +19,42 @@
 // values, useful for fuzzing.
 //
 
+#include "wasm-type.h"
+#include "wasm.h"
+
 namespace wasm {
 
-static std::string generateSpecWrapper(Module& wasm) {
+inline std::string generateSpecWrapper(Module& wasm) {
   std::string ret;
   for (auto& exp : wasm.exports) {
     auto* func = wasm.getFunctionOrNull(exp->value);
-    if (!func) continue; // something exported other than a function
-    ret += std::string("(invoke \"hangLimitInitializer\") (invoke \"") + exp->name.str + "\" ";
-    for (Type param : func->params) {
+    if (!func) {
+      continue; // something exported other than a function
+    }
+    ret += std::string("(invoke \"hangLimitInitializer\") (invoke \"") +
+           exp->name.toString() + "\" ";
+    for (const auto& param : func->getParams()) {
       // zeros in arguments TODO more?
-      switch (param) {
-        case i32: ret += "(i32.const 0)"; break;
-        case i64: ret += "(i64.const 0)"; break;
-        case f32: ret += "(f32.const 0)"; break;
-        case f64: ret += "(f64.const 0)"; break;
-        case v128: ret += "(v128.const i32x4 0 0 0 0)"; break;
-        case none:
-        case unreachable: WASM_UNREACHABLE();
+      TODO_SINGLE_COMPOUND(param);
+      switch (param.getBasic()) {
+        case Type::i32:
+          ret += "(i32.const 0)";
+          break;
+        case Type::i64:
+          ret += "(i64.const 0)";
+          break;
+        case Type::f32:
+          ret += "(f32.const 0)";
+          break;
+        case Type::f64:
+          ret += "(f64.const 0)";
+          break;
+        case Type::v128:
+          ret += "(v128.const i32x4 0 0 0 0)";
+          break;
+        case Type::none:
+        case Type::unreachable:
+          WASM_UNREACHABLE("unexpected type");
       }
       ret += " ";
     }

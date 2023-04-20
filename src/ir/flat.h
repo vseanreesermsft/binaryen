@@ -43,47 +43,62 @@
 // making the AST have these properties:
 //
 //  1. Aside from a local.set, the operands of an instruction must be a
-//     local.get, a const, or an unreachable. Anything else is written
-//     to a local earlier.
-//  2. Disallow block, loop, and if return values, and do not allow the
-//     function body to have a concrete type, i.e., do not use
+//     local.get, a const, an unreachable, or a ref.as_non_null. Anything else
+//     is written to a local earlier.
+//  2. Disallow control flow (block, loop, if, and try) return values, and do
+//     not allow the function body to have a concrete type, i.e., do not use
 //     control flow to pass around values.
 //  3. Disallow local.tee, setting a local is always done in a local.set
 //     on a non-nested-expression location.
+//  4. local.set cannot have an operand that is control flow (control flow with
+//     values is prohibited already, but e.g. a block ending in unreachable,
+//     which can normally be nested, is also disallowed).
+//
+// Note: ref.as_non_null must be allowed in a nested position because we cannot
+// spill it to a local - the result is non-null, which is not allowable in a
+// local.
 //
 
 #ifndef wasm_ir_flat_h
 #define wasm_ir_flat_h
 
-#include "wasm-traversal.h"
 #include "ir/iteration.h"
+#include "ir/properties.h"
+#include "pass.h"
+#include "wasm-traversal.h"
 
-namespace wasm {
-
-namespace Flat {
-
-inline bool isControlFlowStructure(Expression* curr) {
-  return curr->is<Block>() || curr->is<If>() || curr->is<Loop>();
-}
+namespace wasm::Flat {
 
 inline void verifyFlatness(Function* func) {
-  struct VerifyFlatness : public PostWalker<VerifyFlatness, UnifiedExpressionVisitor<VerifyFlatness>> {
+  struct VerifyFlatness
+    : public PostWalker<VerifyFlatness,
+                        UnifiedExpressionVisitor<VerifyFlatness>> {
     void visitExpression(Expression* curr) {
-      if (isControlFlowStructure(curr)) {
-        verify(!isConcreteType(curr->type), "control flow structures must not flow values");
-      } else if (curr->is<SetLocal>()) {
-        verify(!isConcreteType(curr->type), "tees are not allowed, only sets");
+      if (Properties::isControlFlowStructure(curr)) {
+        verify(!curr->type.isConcrete(),
+               "control flow structures must not flow values");
+      } else if (auto* set = curr->dynCast<LocalSet>()) {
+        verify(!set->isTee() || set->type == Type::unreachable,
+               "tees are not allowed, only sets");
+        verify(!Properties::isControlFlowStructure(set->value),
+               "set values cannot be control flow");
       } else {
         for (auto* child : ChildIterator(curr)) {
-          verify(child->is<Const>() || child->is<GetLocal>() || child->is<Unreachable>(),
-                 "instructions must only have const, local.get, or unreachable as children");
+          bool isRefAsNonNull =
+            child->is<RefAs>() && child->cast<RefAs>()->op == RefAsNonNull;
+          verify(Properties::isConstantExpression(child) ||
+                   child->is<LocalGet>() || child->is<Unreachable>() ||
+                   isRefAsNonNull,
+                 "instructions must only have constant expressions, local.get, "
+                 "or unreachable as children");
         }
       }
     }
 
     void verify(bool condition, const char* message) {
       if (!condition) {
-        Fatal() << "IR must be flat: run --flatten beforehand (" << message << ", in " << getFunction()->name << ')';
+        Fatal() << "IR must be flat: run --flatten beforehand (" << message
+                << ", in " << getFunction()->name << ')';
       }
     }
   };
@@ -91,30 +106,29 @@ inline void verifyFlatness(Function* func) {
   VerifyFlatness verifier;
   verifier.walkFunction(func);
   verifier.setFunction(func);
-  verifier.verify(!isConcreteType(func->body->type), "function bodies must not flow values");
+  verifier.verify(!func->body->type.isConcrete(),
+                  "function bodies must not flow values");
 }
 
 inline void verifyFlatness(Module* module) {
-  struct VerifyFlatness : public WalkerPass<PostWalker<VerifyFlatness, UnifiedExpressionVisitor<VerifyFlatness>>> {
+  struct VerifyFlatness
+    : public WalkerPass<
+        PostWalker<VerifyFlatness, UnifiedExpressionVisitor<VerifyFlatness>>> {
     bool isFunctionParallel() override { return true; }
 
-    VerifyFlatness* create() override {
-      return new VerifyFlatness();
+    bool modifiesBinaryenIR() override { return false; }
+
+    std::unique_ptr<Pass> create() override {
+      return std::make_unique<VerifyFlatness>();
     }
 
-    void doVisitFunction(Function* func) {
-      verifyFlatness(func);
-    }
+    void visitFunction(Function* func) { verifyFlatness(func); }
   };
 
   PassRunner runner(module);
-  runner.setIsNested(true);
-  runner.add<VerifyFlatness>();
-  runner.run();
+  VerifyFlatness().run(&runner, module);
 }
 
-} // namespace Fkat
-
-} // namespace wasm
+} // namespace wasm::Flat
 
 #endif // wasm_ir_flat_h

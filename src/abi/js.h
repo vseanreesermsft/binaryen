@@ -17,17 +17,15 @@
 #ifndef wasm_abi_abi_h
 #define wasm_abi_abi_h
 
-#include "wasm.h"
 #include "asmjs/shared-constants.h"
+#include "wasm-builder.h"
+#include "wasm.h"
 
 namespace wasm {
 
 namespace ABI {
 
-enum class LegalizationLevel {
-  Full = 0,
-  Minimal = 1
-};
+enum class LegalizationLevel { Full = 0, Minimal = 1 };
 
 inline std::string getLegalizationPass(LegalizationLevel level) {
   if (level == LegalizationLevel::Full) {
@@ -39,51 +37,68 @@ inline std::string getLegalizationPass(LegalizationLevel level) {
 
 namespace wasm2js {
 
-extern cashew::IString SCRATCH_LOAD_I32,
-                       SCRATCH_STORE_I32,
-                       SCRATCH_LOAD_I64,
-                       SCRATCH_STORE_I64,
-                       SCRATCH_LOAD_F32,
-                       SCRATCH_STORE_F32,
-                       SCRATCH_LOAD_F64,
-                       SCRATCH_STORE_F64;
+extern IString SCRATCH_LOAD_I32;
+extern IString SCRATCH_STORE_I32;
+extern IString SCRATCH_LOAD_F32;
+extern IString SCRATCH_STORE_F32;
+extern IString SCRATCH_LOAD_F64;
+extern IString SCRATCH_STORE_F64;
+extern IString MEMORY_INIT;
+extern IString MEMORY_FILL;
+extern IString MEMORY_COPY;
+extern IString DATA_DROP;
+extern IString ATOMIC_WAIT_I32;
+extern IString ATOMIC_RMW_I64;
+extern IString GET_STASHED_BITS;
+extern IString TRAP;
 
-// The wasm2js scratch memory helpers let us read and write to scratch memory
-// for purposes of implementing things like reinterpret, etc.
+// The wasm2js helpers let us do things that can't be done without special help,
+// like read and write to scratch memory for purposes of implementing things
+// like reinterpret, etc.
 // The optional "specific" parameter is a specific function we want. If not
 // provided, we create them all.
-inline void ensureScratchMemoryHelpers(Module* wasm, cashew::IString specific = cashew::IString()) {
-  auto ensureImport = [&](Name name, const std::vector<Type> params, Type result) {
-    if (wasm->getFunctionOrNull(name)) return;
-    if (specific.is() && name != specific) return;
-    auto func = make_unique<Function>();
-    func->name = name;
-    func->params = params;
-    func->result = result;
+inline void ensureHelpers(Module* wasm, IString specific = IString()) {
+  auto ensureImport = [&](Name name, Type params, Type results) {
+    if (wasm->getFunctionOrNull(name)) {
+      return;
+    }
+    if (specific.is() && name != specific) {
+      return;
+    }
+    auto func = Builder::makeFunction(name, Signature(params, results), {});
     func->module = ENV;
     func->base = name;
     wasm->addFunction(std::move(func));
   };
 
-  ensureImport(SCRATCH_LOAD_I32, { i32 }, i32);
-  ensureImport(SCRATCH_STORE_I32, { i32, i32 }, none);
-  ensureImport(SCRATCH_LOAD_I64, {}, i64);
-  ensureImport(SCRATCH_STORE_I64, { i64 }, none);
-  ensureImport(SCRATCH_LOAD_F32, {}, f32);
-  ensureImport(SCRATCH_STORE_F32, { f32 }, none);
-  ensureImport(SCRATCH_LOAD_F64, {}, f64);
-  ensureImport(SCRATCH_STORE_F64, { f64 }, none);
+  ensureImport(SCRATCH_LOAD_I32, {Type::i32}, Type::i32);
+  ensureImport(SCRATCH_STORE_I32, {Type::i32, Type::i32}, Type::none);
+  ensureImport(SCRATCH_LOAD_F32, {}, Type::f32);
+  ensureImport(SCRATCH_STORE_F32, {Type::f32}, Type::none);
+  ensureImport(SCRATCH_LOAD_F64, {}, Type::f64);
+  ensureImport(SCRATCH_STORE_F64, {Type::f64}, Type::none);
+  ensureImport(
+    MEMORY_INIT, {Type::i32, Type::i32, Type::i32, Type::i32}, Type::none);
+  ensureImport(MEMORY_FILL, {Type::i32, Type::i32, Type::i32}, Type::none);
+  ensureImport(MEMORY_COPY, {Type::i32, Type::i32, Type::i32}, Type::none);
+  ensureImport(DATA_DROP, {Type::i32}, Type::none);
+  ensureImport(
+    ATOMIC_WAIT_I32, {Type::i32, Type::i32, Type::i32, Type::i32}, Type::i32);
+  ensureImport(
+    ATOMIC_RMW_I64,
+    {Type::i32, Type::i32, Type::i32, Type::i32, Type::i32, Type::i32},
+    Type::i32);
+  ensureImport(GET_STASHED_BITS, {}, Type::i32);
+  ensureImport(TRAP, {}, Type::none);
 }
 
-inline bool isScratchMemoryHelper(cashew::IString name) {
-  return name == SCRATCH_LOAD_I32 ||
-         name == SCRATCH_STORE_I32 ||
-         name == SCRATCH_LOAD_I64 ||
-         name == SCRATCH_STORE_I64 ||
-         name == SCRATCH_LOAD_F32 ||
-         name == SCRATCH_STORE_F32 ||
-         name == SCRATCH_LOAD_F64 ||
-         name == SCRATCH_STORE_F64;
+inline bool isHelper(IString name) {
+  return name == SCRATCH_LOAD_I32 || name == SCRATCH_STORE_I32 ||
+         name == SCRATCH_LOAD_F32 || name == SCRATCH_STORE_F32 ||
+         name == SCRATCH_LOAD_F64 || name == SCRATCH_STORE_F64 ||
+         name == ATOMIC_WAIT_I32 || name == MEMORY_INIT ||
+         name == MEMORY_FILL || name == MEMORY_COPY || name == DATA_DROP ||
+         name == ATOMIC_RMW_I64 || name == GET_STASHED_BITS || name == TRAP;
 }
 
 } // namespace wasm2js

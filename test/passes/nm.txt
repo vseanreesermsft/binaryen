@@ -1,13 +1,13 @@
-    $a : 1
-    $b : 5
-    $c : 13
+    a : 1
+    b : 5
+    c : 13
 (module
  (type $0 (func))
  (memory $0 0)
- (func $a (; 0 ;) (type $0)
+ (func $a
   (nop)
  )
- (func $b (; 1 ;) (type $0)
+ (func $b
   (drop
    (loop $loop-in1 (result i32)
     (nop)
@@ -15,7 +15,7 @@
    )
   )
  )
- (func $c (; 2 ;) (type $0)
+ (func $c
   (block $top
    (nop)
    (drop

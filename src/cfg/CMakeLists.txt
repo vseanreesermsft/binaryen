@@ -1,4 +1,6 @@
-SET(cfg_SOURCES
+FILE(GLOB cfg_HEADERS *.h)
+set(cfg_SOURCES
   Relooper.cpp
+  ${cfg_HEADERS}
 )
-ADD_LIBRARY(cfg STATIC ${cfg_SOURCES})
+add_library(cfg OBJECT ${cfg_SOURCES})

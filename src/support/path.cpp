@@ -20,23 +20,52 @@
 
 #include "support/path.h"
 
-namespace wasm {
+namespace wasm::Path {
 
-namespace Path {
-
-std::string getPathSeparator() {
+char getPathSeparator() {
   // TODO: use c++17's path separator
   //       http://en.cppreference.com/w/cpp/experimental/fs/path
-#if defined(WIN32) || defined(_WIN32) 
-  return "\\";
+#if defined(WIN32) || defined(_WIN32)
+  return '\\';
+#else
+  return '/';
+#endif
+}
+
+static std::string getAllPathSeparators() {
+  // The canonical separator on Windows is `\`, but it also accepts `/`.
+#if defined(WIN32) || defined(_WIN32)
+  return "\\/";
 #else
   return "/";
 #endif
 }
 
+std::string getDirName(const std::string& path) {
+  for (char c : getAllPathSeparators()) {
+    auto sep = path.rfind(c);
+    if (sep != std::string::npos) {
+      return path.substr(0, sep);
+    }
+  }
+  return "";
+}
+
+std::string getBaseName(const std::string& path) {
+  for (char c : getAllPathSeparators()) {
+    auto sep = path.rfind(c);
+    if (sep != std::string::npos) {
+      return path.substr(sep + 1);
+    }
+  }
+  return path;
+}
+
 std::string getBinaryenRoot() {
   auto* envVar = getenv("BINARYEN_ROOT");
-  if (envVar) return envVar;
+  if (envVar) {
+    return envVar;
+  }
   return ".";
 }
 
@@ -50,16 +79,16 @@ std::string getBinaryenBinDir() {
   }
 }
 
-void setBinaryenBinDir(std::string dir) {
+void setBinaryenBinDir(const std::string& dir) {
   binDir = dir;
+  if (binDir.empty() || binDir.back() != getPathSeparator()) {
+    binDir += getPathSeparator();
+  }
 }
 
 // Gets the path to a binaryen binary tool, like wasm-opt
-std::string getBinaryenBinaryTool(std::string name) {
+std::string getBinaryenBinaryTool(const std::string& name) {
   return getBinaryenBinDir() + name;
 }
 
-} // namespace Path
-
-} // namespace wasm
-
+} // namespace wasm::Path

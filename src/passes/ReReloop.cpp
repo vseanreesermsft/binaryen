@@ -23,24 +23,22 @@
 
 #include <memory>
 
-#include "wasm.h"
-#include "wasm-builder.h"
-#include "wasm-traversal.h"
-#include "pass.h"
 #include "cfg/Relooper.h"
 #include "ir/flat.h"
 #include "ir/utils.h"
-
-#ifdef RERELOOP_DEBUG
-#include <wasm-printing.h>
-#endif
+#include "pass.h"
+#include "wasm-builder.h"
+#include "wasm-traversal.h"
+#include "wasm.h"
 
 namespace wasm {
 
 struct ReReloop final : public Pass {
   bool isFunctionParallel() override { return true; }
 
-  Pass* create() override { return new ReReloop; }
+  std::unique_ptr<Pass> create() override {
+    return std::make_unique<ReReloop>();
+  }
 
   std::unique_ptr<CFG::Relooper> relooper;
   std::unique_ptr<Builder> builder;
@@ -50,9 +48,7 @@ struct ReReloop final : public Pass {
   CFG::Block* currCFGBlock = nullptr;
 
   CFG::Block* makeCFGBlock() {
-    auto* ret = new CFG::Block(builder->makeBlock());
-    relooper->AddBlock(ret);
-    return ret;
+    return relooper->AddBlock(builder->makeBlock());
   }
 
   CFG::Block* setCurrCFGBlock(CFG::Block* curr) {
@@ -62,21 +58,13 @@ struct ReReloop final : public Pass {
     return currCFGBlock = curr;
   }
 
-  CFG::Block* startCFGBlock() {
-    return setCurrCFGBlock(makeCFGBlock());
-  }
+  CFG::Block* startCFGBlock() { return setCurrCFGBlock(makeCFGBlock()); }
 
-  CFG::Block* getCurrCFGBlock() {
-    return currCFGBlock;
-  }
+  CFG::Block* getCurrCFGBlock() { return currCFGBlock; }
 
-  Block* getCurrBlock() {
-    return currCFGBlock->Code->cast<Block>();
-  }
+  Block* getCurrBlock() { return currCFGBlock->Code->cast<Block>(); }
 
-  void finishBlock() {
-    getCurrBlock()->finalize();
-  }
+  void finishBlock() { getCurrBlock()->finalize(); }
 
   // break handling
 
@@ -86,33 +74,35 @@ struct ReReloop final : public Pass {
     breakTargets[name] = target;
   }
 
-  CFG::Block* getBreakTarget(Name name) {
-    return breakTargets[name];
-  }
+  CFG::Block* getBreakTarget(Name name) { return breakTargets[name]; }
 
   // branch handling
 
-  void addBranch(CFG::Block* from, CFG::Block* to, Expression* condition = nullptr) {
+  void
+  addBranch(CFG::Block* from, CFG::Block* to, Expression* condition = nullptr) {
     from->AddBranchTo(to, condition);
   }
 
-  void addSwitchBranch(CFG::Block* from, CFG::Block* to, const std::set<Index>& values) {
+  void addSwitchBranch(CFG::Block* from,
+                       CFG::Block* to,
+                       const std::set<Index>& values) {
     std::vector<Index> list;
-    for (auto i : values) list.push_back(i);
+    for (auto i : values) {
+      list.push_back(i);
+    }
     from->AddSwitchBranchTo(to, std::move(list));
   }
 
   // we work using a stack of control flow tasks
 
   struct Task {
+    virtual ~Task() = default;
     ReReloop& parent;
     Task(ReReloop& parent) : parent(parent) {}
-    virtual void run() {
-      WASM_UNREACHABLE();
-    }
+    virtual void run() { WASM_UNREACHABLE("unimpl"); }
   };
 
-  typedef std::shared_ptr<Task> TaskPtr;
+  using TaskPtr = std::shared_ptr<Task>;
   std::vector<TaskPtr> stack;
 
   struct TriageTask final : public Task {
@@ -120,9 +110,7 @@ struct ReReloop final : public Pass {
 
     TriageTask(ReReloop& parent, Expression* curr) : Task(parent), curr(curr) {}
 
-    void run() override {
-      parent.triage(curr);
-    }
+    void run() override { parent.triage(curr); }
   };
 
   struct BlockTask final : public Task {
@@ -183,10 +171,12 @@ struct ReReloop final : public Pass {
       parent.addBranch(task->condition, ifTrueBegin, curr->condition);
       if (curr->ifFalse) {
         parent.stack.push_back(task);
-        parent.stack.push_back(std::make_shared<TriageTask>(parent, curr->ifFalse));
+        parent.stack.push_back(
+          std::make_shared<TriageTask>(parent, curr->ifFalse));
       }
       parent.stack.push_back(task);
-      parent.stack.push_back(std::make_shared<TriageTask>(parent, curr->ifTrue));
+      parent.stack.push_back(
+        std::make_shared<TriageTask>(parent, curr->ifTrue));
     }
 
     void run() override {
@@ -194,7 +184,8 @@ struct ReReloop final : public Pass {
         // end of ifTrue
         ifTrueEnd = parent.getCurrCFGBlock();
         auto* after = parent.startCFGBlock();
-        parent.addBranch(condition, after); // if condition was false, go after the ifTrue, to ifFalse or outside
+        // if condition was false, go after the ifTrue, to ifFalse or outside
+        parent.addBranch(condition, after);
         if (!curr->ifFalse) {
           parent.addBranch(ifTrueEnd, after);
         }
@@ -206,16 +197,18 @@ struct ReReloop final : public Pass {
         parent.addBranch(ifTrueEnd, after);
         parent.addBranch(ifFalseEnd, after);
       } else {
-        WASM_UNREACHABLE();
+        WASM_UNREACHABLE("invalid phase");
       }
     }
   };
 
   struct BreakTask : public Task {
     static void handle(ReReloop& parent, Break* curr) {
-      // add the branch. note how if the condition is false, it is the right value there as well
+      // add the branch. note how if the condition is false, it is the right
+      // value there as well
       auto* before = parent.getCurrCFGBlock();
-      parent.addBranch(before, parent.getBreakTarget(curr->name), curr->condition);
+      parent.addBranch(
+        before, parent.getBreakTarget(curr->name), curr->condition);
       if (curr->condition) {
         auto* after = parent.startCFGBlock();
         parent.addBranch(before, after);
@@ -237,13 +230,14 @@ struct ReReloop final : public Pass {
       for (Index i = 0; i < num; i++) {
         targetValues[targets[i]].insert(i);
       }
-      for (auto& iter : targetValues) {
-        parent.addSwitchBranch(before, parent.getBreakTarget(iter.first), iter.second);
+      for (auto& [name, indices] : targetValues) {
+        parent.addSwitchBranch(before, parent.getBreakTarget(name), indices);
       }
-      // the default may be among the targets, in which case, we can't add it simply as
-      // it would be a duplicate, so create a temp block
+      // the default may be among the targets, in which case, we can't add it
+      // simply as it would be a duplicate, so create a temp block
       if (targetValues.count(curr->default_) == 0) {
-        parent.addSwitchBranch(before, parent.getBreakTarget(curr->default_), std::set<Index>());
+        parent.addSwitchBranch(
+          before, parent.getBreakTarget(curr->default_), std::set<Index>());
       } else {
         auto* temp = parent.startCFGBlock();
         parent.addSwitchBranch(before, temp, std::set<Index>());
@@ -286,6 +280,8 @@ struct ReReloop final : public Pass {
       ReturnTask::handle(*this, ret);
     } else if (auto* un = curr->dynCast<Unreachable>()) {
       UnreachableTask::handle(*this, un);
+    } else if (curr->is<Try>() || curr->is<Throw>() || curr->is<Rethrow>()) {
+      Fatal() << "ReReloop does not support EH instructions yet";
     } else {
       // not control flow, so just a simple element
       getCurrBlock()->list.push_back(curr);
@@ -297,7 +293,7 @@ struct ReReloop final : public Pass {
     // TODO: optimize with this?
   }
 
-  void runOnFunction(PassRunner* runner, Module* module, Function* function) override {
+  void runOnFunction(Module* module, Function* function) override {
     Flat::verifyFlatness(function);
 
     // since control flow is flattened, this is pretty simple
@@ -316,15 +312,14 @@ struct ReReloop final : public Pass {
     // finish the current block
     finishBlock();
     // blocks that do not have any exits are dead ends in the relooper. we need
-    // to make sure that are in fact dead ends, and do not flow control anywhere.
-    // add a return as needed
-    for (auto* cfgBlock : relooper->Blocks) {
+    // to make sure that are in fact dead ends, and do not flow control
+    // anywhere. add a return as needed
+    for (auto& cfgBlock : relooper->Blocks) {
       auto* block = cfgBlock->Code->cast<Block>();
-      if (cfgBlock->BranchesOut.empty() && block->type != unreachable) {
-        block->list.push_back(
-          function->result == none ? (Expression*)builder->makeReturn()
-                                   : (Expression*)builder->makeUnreachable()
-        );
+      if (cfgBlock->BranchesOut.empty() && block->type != Type::unreachable) {
+        block->list.push_back(function->getResults() == Type::none
+                                ? (Expression*)builder->makeReturn()
+                                : (Expression*)builder->makeUnreachable());
         block->finalize();
       }
     }
@@ -332,9 +327,7 @@ struct ReReloop final : public Pass {
     std::cout << "rerelooping " << function->name << '\n';
     for (auto* block : relooper->Blocks) {
       std::cout << block << " block:\n" << block->Code << '\n';
-      for (auto& pair : block->BranchesOut) {
-        auto* target = pair.first;
-        auto* branch = pair.second;
+      for (auto& [target, branch] : block->BranchesOut) {
         std::cout << "branch to " << target << "\n";
         if (branch->Condition) {
           std::cout << "  with condition\n" << branch->Condition << '\n';
@@ -346,7 +339,7 @@ struct ReReloop final : public Pass {
     relooper->Calculate(entry);
     // render
     {
-      auto temp = builder->addVar(function, i32);
+      auto temp = builder->addVar(function, Type::i32);
       CFG::RelooperBuilder builder(*module, temp);
       function->body = relooper->Render(builder);
       // if the function has a result, and the relooper emitted
@@ -355,20 +348,17 @@ struct ReReloop final : public Pass {
       // because of the relooper's boilerplate switch-handling
       // code, for example, which could be optimized out later
       // but isn't yet), then make sure it has a proper type
-      if (function->result != none && function->body->type == none) {
-        function->body = builder.makeSequence(
-          function->body,
-          builder.makeUnreachable()
-        );
+      if (function->getResults() != Type::none &&
+          function->body->type == Type::none) {
+        function->body =
+          builder.makeSequence(function->body, builder.makeUnreachable());
       }
     }
     // TODO: should this be in the relooper itself?
-    ReFinalize().walk(function->body);
+    ReFinalize().walkFunctionInModule(function, module);
   }
 };
 
-Pass *createReReloopPass() {
-  return new ReReloop();
-}
+Pass* createReReloopPass() { return new ReReloop(); }
 
 } // namespace wasm

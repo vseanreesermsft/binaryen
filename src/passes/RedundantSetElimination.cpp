@@ -33,42 +33,58 @@
 // here).
 //
 
-#include <wasm.h>
-#include <pass.h>
-#include <wasm-builder.h>
 #include <cfg/cfg-traversal.h>
 #include <ir/literal-utils.h>
+#include <ir/numbering.h>
+#include <ir/properties.h>
 #include <ir/utils.h>
+#include <pass.h>
+#include <support/small_set.h>
 #include <support/unique_deferring_queue.h>
+#include <wasm-builder.h>
+#include <wasm.h>
 
 namespace wasm {
 
-// We do a very simple numbering of local values, just a unique
-// number for constants so far, enough to see
-// trivial duplication. LocalValues maps each local index to
-// its current value
-typedef std::vector<Index> LocalValues;
+// Map each local index to its current value number (which is computed in
+// ValueNumbering).
+using LocalValues = std::vector<Index>;
 
 namespace {
 
 // information in a basic block
 struct Info {
   LocalValues start, end; // the local values at the start and end of the block
-  std::vector<Expression**> setps;
+  std::vector<Expression**> items;
 };
 
-struct RedundantSetElimination : public WalkerPass<CFGWalker<RedundantSetElimination, Visitor<RedundantSetElimination>, Info>> {
+struct RedundantSetElimination
+  : public WalkerPass<CFGWalker<RedundantSetElimination,
+                                Visitor<RedundantSetElimination>,
+                                Info>> {
   bool isFunctionParallel() override { return true; }
 
-  Pass* create() override { return new RedundantSetElimination(); }
+  std::unique_ptr<Pass> create() override {
+    return std::make_unique<RedundantSetElimination>();
+  }
 
   Index numLocals;
 
+  // In rare cases we make a change to a type that requires a refinalize.
+  bool refinalize = false;
+
   // cfg traversal work
 
-  static void doVisitSetLocal(RedundantSetElimination* self, Expression** currp) {
+  static void doVisitLocalGet(RedundantSetElimination* self,
+                              Expression** currp) {
     if (self->currBasicBlock) {
-      self->currBasicBlock->contents.setps.push_back(currp);
+      self->currBasicBlock->contents.items.push_back(currp);
+    }
+  }
+  static void doVisitLocalSet(RedundantSetElimination* self,
+                              Expression** currp) {
+    if (self->currBasicBlock) {
+      self->currBasicBlock->contents.items.push_back(currp);
     }
   }
 
@@ -76,51 +92,50 @@ struct RedundantSetElimination : public WalkerPass<CFGWalker<RedundantSetElimina
 
   void doWalkFunction(Function* func) {
     numLocals = func->getNumLocals();
+    if (numLocals == 0) {
+      return; // nothing to do
+    }
+
+    // Create a unique value for use to mark unseen locations.
+    unseenValue = valueNumbering.getUniqueValue();
+
     // create the CFG by walking the IR
-    CFGWalker<RedundantSetElimination, Visitor<RedundantSetElimination>, Info>::doWalkFunction(func);
+    CFGWalker<RedundantSetElimination, Visitor<RedundantSetElimination>, Info>::
+      doWalkFunction(func);
     // flow values across blocks
     flowValues(func);
     // remove redundant sets
-    optimize();
+    optimize(func);
+
+    if (refinalize) {
+      ReFinalize().walkFunctionInModule(func, this->getModule());
+    }
   }
 
-  // numbering
+  // Use a value numbering for the values of expressions.
+  ValueNumbering valueNumbering;
 
-  Index nextValue = 1; // 0 is reserved for the "unseen value"
-  std::unordered_map<Literal, Index> literalValues; // each constant has a value
-  std::unordered_map<Expression*, Index> expressionValues; // each value can have a value
-  std::unordered_map<BasicBlock*, std::unordered_map<Index, Index>> blockMergeValues; // each block has values for each merge
+  // In additon to valueNumbering, each block has values for each merge.
+  std::unordered_map<BasicBlock*, std::unordered_map<Index, Index>>
+    blockMergeValues;
 
-  Index getUnseenValue() { // we haven't seen this location yet
-    return 0;
-  }
+  // A value that indicates we haven't seen this location yet.
+  Index unseenValue;
+
   Index getUniqueValue() {
+    auto value = valueNumbering.getUniqueValue();
 #ifdef RSE_DEBUG
-    std::cout << "new unique value " << nextValue << '\n';
+    std::cout << "new unique value " << value << '\n';
 #endif
-    return nextValue++;
+    return value;
   }
 
-  Index getLiteralValue(Literal lit) {
-    auto iter = literalValues.find(lit);
-    if (iter != literalValues.end()) {
-      return iter->second;
-    }
+  Index getValue(Literals lit) {
+    auto value = valueNumbering.getValue(lit);
 #ifdef RSE_DEBUG
-    std::cout << "new literal value for " << lit << '\n';
+    std::cout << "lit value " << value << '\n';
 #endif
-    return literalValues[lit] = getUniqueValue();
-  }
-
-  Index getExpressionValue(Expression* expr) {
-    auto iter = expressionValues.find(expr);
-    if (iter != expressionValues.end()) {
-      return iter->second;
-    }
-#ifdef RSE_DEBUG
-    std::cout << "new expr value for " << expr << '\n';
-#endif
-    return expressionValues[expr] = getUniqueValue();
+    return value;
   }
 
   Index getBlockMergeValue(BasicBlock* block, Index index) {
@@ -130,31 +145,35 @@ struct RedundantSetElimination : public WalkerPass<CFGWalker<RedundantSetElimina
       return iter->second;
     }
 #ifdef RSE_DEBUG
-    std::cout << "new block-merge value for " << block << " : " << index << '\n';
+    std::cout << "new block-merge value for " << block << " : " << index
+              << '\n';
 #endif
     return mergeValues[index] = getUniqueValue();
   }
 
   bool isBlockMergeValue(BasicBlock* block, Index index, Index value) {
     auto iter = blockMergeValues.find(block);
-    if (iter == blockMergeValues.end()) return false;
+    if (iter == blockMergeValues.end()) {
+      return false;
+    }
     auto& mergeValues = iter->second;
     auto iter2 = mergeValues.find(index);
-    if (iter2 == mergeValues.end()) return false;
+    if (iter2 == mergeValues.end()) {
+      return false;
+    }
     return value == iter2->second;
   }
 
-  Index getValue(Expression* value, LocalValues& currValues) {
-    if (auto* c = value->dynCast<Const>()) {
-      // a constant
-      return getLiteralValue(c->value);
-    } else if (auto* get = value->dynCast<GetLocal>()) {
+  Index getValue(Expression* expr, LocalValues& currValues) {
+    if (auto* get = expr->dynCast<LocalGet>()) {
       // a copy of whatever that was
       return currValues[get->index];
-    } else {
-      // get the value's own unique value
-      return getExpressionValue(value);
     }
+    auto value = valueNumbering.getValue(expr);
+#ifdef RSE_DEBUG
+    std::cout << "expr value " << value << '\n';
+#endif
+    return value;
   }
 
   // flowing
@@ -166,26 +185,32 @@ struct RedundantSetElimination : public WalkerPass<CFGWalker<RedundantSetElimina
       if (block.get() == entry) {
         // params are complex values we can't optimize; vars are zeros
         for (Index i = 0; i < numLocals; i++) {
+          auto type = func->getLocalType(i);
           if (func->isParam(i)) {
 #ifdef RSE_DEBUG
             std::cout << "new param value for " << i << '\n';
 #endif
             start[i] = getUniqueValue();
+          } else if (!LiteralUtils::canMakeZero(type)) {
+#ifdef RSE_DEBUG
+            std::cout << "new unique value for non-zeroable " << i << '\n';
+#endif
+            start[i] = getUniqueValue();
           } else {
-            start[i] = getLiteralValue(Literal::makeZero(func->getLocalType(i)));
+            start[i] = getValue(Literal::makeZeros(type));
           }
         }
       } else {
         // other blocks have all unseen values to begin with
         for (Index i = 0; i < numLocals; i++) {
-          start[i] = getUnseenValue();
+          start[i] = unseenValue;
         }
       }
       // the ends all begin unseen
       LocalValues& end = block->contents.end;
       end.resize(numLocals);
       for (Index i = 0; i < numLocals; i++) {
-        end[i] = getUnseenValue();
+        end[i] = unseenValue;
       }
     }
     // keep working while stuff is flowing. we use a unique deferred queue
@@ -256,9 +281,9 @@ struct RedundantSetElimination : public WalkerPass<CFGWalker<RedundantSetElimina
             iter++;
             while (iter != in.end()) {
               auto otherValue = (*iter)->contents.end[i];
-              if (value == getUnseenValue()) {
+              if (value == unseenValue) {
                 value = otherValue;
-              } else if (otherValue == getUnseenValue()) {
+              } else if (otherValue == unseenValue) {
                 // nothing to do, other has no information
               } else if (value != otherValue) {
                 // 2 different values, this is a merged value
@@ -274,12 +299,16 @@ struct RedundantSetElimination : public WalkerPass<CFGWalker<RedundantSetElimina
 #ifdef RSE_DEBUG
       dump("start", curr->contents.start);
 #endif
-      // flow values through it, then add those we can reach if they need an update.
+      // flow values through it, then add those we can reach if they need an
+      // update.
       auto currValues = curr->contents.start; // we'll modify this as we go
-      auto& setps = curr->contents.setps;
-      for (auto** setp : setps) {
-        auto* set = (*setp)->cast<SetLocal>();
-        currValues[set->index] = getValue(set->value, currValues);
+      auto& items = curr->contents.items;
+      for (auto** item : items) {
+        if (auto* set = (*item)->dynCast<LocalSet>()) {
+          auto* value = Properties::getFallthrough(
+            set->value, getPassOptions(), *getModule());
+          currValues[set->index] = getValue(value, currValues);
+        }
       }
       if (currValues == curr->contents.end) {
         // nothing changed, so no more work to do
@@ -307,36 +336,108 @@ struct RedundantSetElimination : public WalkerPass<CFGWalker<RedundantSetElimina
   }
 
   // optimizing
-  void optimize() {
+  void optimize(Function* func) {
+    // Find which locals are refinable, that is, that when we see a global.get
+    // of them we may consider switching to another local index that has the
+    // same value but in a refined type. Computing which locals are relevant for
+    // that optimization is efficient because it avoids a bunch of work below
+    // for hashing numbers etc.
+    std::vector<bool> isRefinable(numLocals, false);
+    for (Index i = 0; i < numLocals; i++) {
+      // TODO: we could also note which locals have "maximal" types, where no
+      //       other local is a refinement of them
+      if (func->getLocalType(i).isRef()) {
+        isRefinable[i] = true;
+      }
+    }
+
     // in each block, run the values through the sets,
     // and remove redundant sets when we see them
     for (auto& block : basicBlocks) {
       auto currValues = block->contents.start; // we'll modify this as we go
-      auto& setps = block->contents.setps;
-      for (auto** setp : setps) {
-        auto* set = (*setp)->cast<SetLocal>();
-        auto oldValue = currValues[set->index];
-        auto newValue = getValue(set->value, currValues);
-        auto index = set->index;
-        if (newValue == oldValue) {
-          remove(setp);
-          continue; // no more work to do
+      auto& items = block->contents.items;
+
+      // Set up the equivalences at the beginning of the block. We'll update
+      // them as we go, so we can use them at any point in the middle. This data
+      // structure maps a value number to the local indexes that have that
+      // value.
+      //
+      // Note that the set here must be ordered to avoid nondeterminism when
+      // picking between multiple equally-good indexes (we'll pick the first in
+      // the iteration, which will have the lowest index).
+      std::unordered_map<Index, SmallSet<Index, 3>> valueToLocals;
+      assert(currValues.size() == numLocals);
+      for (Index i = 0; i < numLocals; i++) {
+        if (isRefinable[i]) {
+          valueToLocals[currValues[i]].insert(i);
         }
-        // update for later steps
-        currValues[index] = newValue;
+      }
+
+      for (auto** item : items) {
+        if (auto* set = (*item)->dynCast<LocalSet>()) {
+          auto oldValue = currValues[set->index];
+          auto* value = Properties::getFallthrough(
+            set->value, getPassOptions(), *getModule());
+          auto newValue = getValue(value, currValues);
+          auto index = set->index;
+          if (newValue == oldValue) {
+            remove(item);
+          } else {
+            // update for later steps
+            currValues[index] = newValue;
+            if (isRefinable[index]) {
+              valueToLocals[oldValue].erase(index);
+              valueToLocals[newValue].insert(index);
+            }
+          }
+          continue;
+        }
+
+        // For gets, see if there is another index with that value, of a more
+        // refined type.
+        auto* get = (*item)->dynCast<LocalGet>();
+        if (!isRefinable[get->index]) {
+          continue;
+        }
+
+        for (auto i : valueToLocals[getValue(get, currValues)]) {
+          auto currType = func->getLocalType(get->index);
+          auto possibleType = func->getLocalType(i);
+          if (possibleType != currType &&
+              Type::isSubType(possibleType, currType)) {
+            // We found an improvement!
+            get->index = i;
+            get->type = possibleType;
+            refinalize = true;
+          }
+        }
       }
     }
   }
 
-  void remove(Expression** setp) {
-    auto* set = (*setp)->cast<SetLocal>();
+  void remove(Expression** item) {
+    auto* set = (*item)->cast<LocalSet>();
     auto* value = set->value;
     if (!set->isTee()) {
-      auto* drop = ExpressionManipulator::convert<SetLocal, Drop>(set);
+      auto* drop = ExpressionManipulator::convert<LocalSet, Drop>(set);
       drop->value = value;
       drop->finalize();
     } else {
-      *setp = value;
+      // If we are replacing the set with something of a more specific type,
+      // then we need to refinalize, for example:
+      //
+      //  (struct.get $X 0
+      //    (local.tee $x
+      //      (..something of type $Y, a subtype of $X..)
+      //    )
+      //  )
+      //
+      // After the replacement the struct.get will read from $Y, whose field may
+      // have a more refined type.
+      if (value->type != set->type) {
+        refinalize = true;
+      }
+      *item = value;
     }
   }
 
@@ -351,10 +452,11 @@ struct RedundantSetElimination : public WalkerPass<CFGWalker<RedundantSetElimina
       }
     }
     for (Index i = 0; i < block->contents.start.size(); i++) {
-      std::cout << "  start[" << i << "] = " << block->contents.start[i] << '\n';
+      std::cout << "  start[" << i << "] = " << block->contents.start[i]
+                << '\n';
     }
-    for (auto** setp : block->contents.setps) {
-      std::cout << "  " << *setp << '\n';
+    for (auto** item : block->contents.items) {
+      std::cout << "  " << *item << '\n';
     }
     std::cout << "====\n";
   }
@@ -370,7 +472,7 @@ struct RedundantSetElimination : public WalkerPass<CFGWalker<RedundantSetElimina
 
 } // namespace
 
-Pass *createRedundantSetEliminationPass() {
+Pass* createRedundantSetEliminationPass() {
   return new RedundantSetElimination();
 }
 

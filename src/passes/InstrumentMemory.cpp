@@ -51,27 +51,48 @@
 //     (i32.const 4)
 //    )
 //   )
+//
+// GC struct and array operations are similarly instrumented, but without their
+// pointers (which are references), and we only log MVP wasm types (i.e., not
+// references).
+//
 
-#include <wasm.h>
-#include <wasm-builder.h>
-#include <pass.h>
-#include "shared-constants.h"
 #include "asmjs/shared-constants.h"
-#include "asm_v_wasm.h"
-#include "ir/function-type-utils.h"
+#include "shared-constants.h"
+#include <pass.h>
+#include <wasm-builder.h>
+#include <wasm.h>
 
 namespace wasm {
 
-static Name load_ptr("load_ptr"),
-            load_val_i32("load_val_i32"),
-            load_val_i64("load_val_i64"),
-            load_val_f32("load_val_f32"),
-            load_val_f64("load_val_f64"),
-            store_ptr("store_ptr"),
-            store_val_i32("store_val_i32"),
-            store_val_i64("store_val_i64"),
-            store_val_f32("store_val_f32"),
-            store_val_f64("store_val_f64");
+static Name load_ptr("load_ptr");
+static Name load_val_i32("load_val_i32");
+static Name load_val_i64("load_val_i64");
+static Name load_val_f32("load_val_f32");
+static Name load_val_f64("load_val_f64");
+static Name store_ptr("store_ptr");
+static Name store_val_i32("store_val_i32");
+static Name store_val_i64("store_val_i64");
+static Name store_val_f32("store_val_f32");
+static Name store_val_f64("store_val_f64");
+static Name struct_get_val_i32("struct_get_val_i32");
+static Name struct_get_val_i64("struct_get_val_i64");
+static Name struct_get_val_f32("struct_get_val_f32");
+static Name struct_get_val_f64("struct_get_val_f64");
+static Name struct_set_val_i32("struct_set_val_i32");
+static Name struct_set_val_i64("struct_set_val_i64");
+static Name struct_set_val_f32("struct_set_val_f32");
+static Name struct_set_val_f64("struct_set_val_f64");
+static Name array_get_val_i32("array_get_val_i32");
+static Name array_get_val_i64("array_get_val_i64");
+static Name array_get_val_f32("array_get_val_f32");
+static Name array_get_val_f64("array_get_val_f64");
+static Name array_set_val_i32("array_set_val_i32");
+static Name array_set_val_i64("array_set_val_i64");
+static Name array_set_val_f32("array_set_val_f32");
+static Name array_set_val_f64("array_set_val_f64");
+static Name array_get_index("array_get_index");
+static Name array_set_index("array_set_index");
 
 // TODO: Add support for atomicRMW/cmpxchg
 
@@ -79,89 +100,209 @@ struct InstrumentMemory : public WalkerPass<PostWalker<InstrumentMemory>> {
   void visitLoad(Load* curr) {
     id++;
     Builder builder(*getModule());
+    auto mem = getModule()->getMemory(curr->memory);
+    auto indexType = mem->indexType;
+    auto offset = builder.makeConstPtr(curr->offset.addr, indexType);
     curr->ptr = builder.makeCall(load_ptr,
-      {
-        builder.makeConst(Literal(int32_t(id))),
-        builder.makeConst(Literal(int32_t(curr->bytes))),
-        builder.makeConst(Literal(int32_t(curr->offset.addr))),
-        curr->ptr
-      },
-      i32
-    );
+                                 {builder.makeConst(int32_t(id)),
+                                  builder.makeConst(int32_t(curr->bytes)),
+                                  offset,
+                                  curr->ptr},
+                                 indexType);
     Name target;
-    switch (curr->type) {
-      case i32: target = load_val_i32; break;
-      case i64: target = load_val_i64; break;
-      case f32: target = load_val_f32; break;
-      case f64: target = load_val_f64; break;
-      default: return; // TODO: other types, unreachable, etc.
+    switch (curr->type.getBasic()) {
+      case Type::i32:
+        target = load_val_i32;
+        break;
+      case Type::i64:
+        target = load_val_i64;
+        break;
+      case Type::f32:
+        target = load_val_f32;
+        break;
+      case Type::f64:
+        target = load_val_f64;
+        break;
+      default:
+        return; // TODO: other types, unreachable, etc.
     }
-    replaceCurrent(builder.makeCall(target,
-      {
-        builder.makeConst(Literal(int32_t(id))),
-        curr
-      },
-      curr->type
-    ));
+    replaceCurrent(builder.makeCall(
+      target, {builder.makeConst(int32_t(id)), curr}, curr->type));
   }
 
   void visitStore(Store* curr) {
     id++;
     Builder builder(*getModule());
+    auto mem = getModule()->getMemory(curr->memory);
+    auto indexType = mem->indexType;
+    auto offset = builder.makeConstPtr(curr->offset.addr, indexType);
     curr->ptr = builder.makeCall(store_ptr,
-      { builder.makeConst(Literal(int32_t(id))),
-        builder.makeConst(Literal(int32_t(curr->bytes))),
-        builder.makeConst(Literal(int32_t(curr->offset.addr))),
-        curr->ptr },
-      i32
-    );
+                                 {builder.makeConst(int32_t(id)),
+                                  builder.makeConst(int32_t(curr->bytes)),
+                                  offset,
+                                  curr->ptr},
+                                 indexType);
     Name target;
-    switch (curr->value->type) {
-      case i32: target = store_val_i32; break;
-      case i64: target = store_val_i64; break;
-      case f32: target = store_val_f32; break;
-      case f64: target = store_val_f64; break;
-      default: return; // TODO: other types, unreachable, etc.
+    switch (curr->value->type.getBasic()) {
+      case Type::i32:
+        target = store_val_i32;
+        break;
+      case Type::i64:
+        target = store_val_i64;
+        break;
+      case Type::f32:
+        target = store_val_f32;
+        break;
+      case Type::f64:
+        target = store_val_f64;
+        break;
+      default:
+        return; // TODO: other types, unreachable, etc.
     }
-    curr->value = builder.makeCall(target, 
-      {
-        builder.makeConst(Literal(int32_t(id))),
-        curr->value
-      },
-      curr->value->type
-    );
+    curr->value = builder.makeCall(
+      target, {builder.makeConst(int32_t(id)), curr->value}, curr->value->type);
   }
 
-  void visitModule(Module *curr) {
-    addImport(curr, load_ptr,      "iiiii");
-    addImport(curr, load_val_i32,  "iii");
-    addImport(curr, load_val_i64,  "jij");
-    addImport(curr, load_val_f32,  "fif");
-    addImport(curr, load_val_f64,  "did");
-    addImport(curr, store_ptr,     "iiiii");
-    addImport(curr, store_val_i32, "iii");
-    addImport(curr, store_val_i64, "jij");
-    addImport(curr, store_val_f32, "fif");
-    addImport(curr, store_val_f64, "did");
+  void visitStructGet(StructGet* curr) {
+    Builder builder(*getModule());
+    Name target;
+    if (curr->type == Type::i32) {
+      target = struct_get_val_i32;
+    } else if (curr->type == Type::i64) {
+      target = struct_get_val_i64;
+    } else if (curr->type == Type::f32) {
+      target = struct_get_val_f32;
+    } else if (curr->type == Type::f64) {
+      target = struct_get_val_f64;
+    } else {
+      return; // TODO: other types, unreachable, etc.
+    }
+    replaceCurrent(builder.makeCall(
+      target, {builder.makeConst(int32_t(id++)), curr}, curr->type));
+  }
+
+  void visitStructSet(StructSet* curr) {
+    Builder builder(*getModule());
+    Name target;
+    if (curr->value->type == Type::i32) {
+      target = struct_set_val_i32;
+    } else if (curr->value->type == Type::i64) {
+      target = struct_set_val_i64;
+    } else if (curr->value->type == Type::f32) {
+      target = struct_set_val_f32;
+    } else if (curr->value->type == Type::f64) {
+      target = struct_set_val_f64;
+    } else {
+      return; // TODO: other types, unreachable, etc.
+    }
+    curr->value =
+      builder.makeCall(target,
+                       {builder.makeConst(int32_t(id++)), curr->value},
+                       curr->value->type);
+  }
+
+  void visitArrayGet(ArrayGet* curr) {
+    Builder builder(*getModule());
+    curr->index =
+      builder.makeCall(array_get_index,
+                       {builder.makeConst(int32_t(id++)), curr->index},
+                       Type::i32);
+    Name target;
+    if (curr->type == Type::i32) {
+      target = array_get_val_i32;
+    } else if (curr->type == Type::i64) {
+      target = array_get_val_i64;
+    } else if (curr->type == Type::f32) {
+      target = array_get_val_f32;
+    } else if (curr->type == Type::f64) {
+      target = array_get_val_f64;
+    } else {
+      return; // TODO: other types, unreachable, etc.
+    }
+    replaceCurrent(builder.makeCall(
+      target, {builder.makeConst(int32_t(id++)), curr}, curr->type));
+  }
+
+  void visitArraySet(ArraySet* curr) {
+    Builder builder(*getModule());
+    curr->index =
+      builder.makeCall(array_set_index,
+                       {builder.makeConst(int32_t(id++)), curr->index},
+                       Type::i32);
+    Name target;
+    if (curr->value->type == Type::i32) {
+      target = array_set_val_i32;
+    } else if (curr->value->type == Type::i64) {
+      target = array_set_val_i64;
+    } else if (curr->value->type == Type::f32) {
+      target = array_set_val_f32;
+    } else if (curr->value->type == Type::f64) {
+      target = array_set_val_f64;
+    } else {
+      return; // TODO: other types, unreachable, etc.
+    }
+    curr->value =
+      builder.makeCall(target,
+                       {builder.makeConst(int32_t(id++)), curr->value},
+                       curr->value->type);
+  }
+
+  void visitModule(Module* curr) {
+    auto indexType =
+      curr->memories.empty() ? Type::i32 : curr->memories[0]->indexType;
+
+    // Load.
+    addImport(
+      curr, load_ptr, {Type::i32, Type::i32, indexType, indexType}, indexType);
+    addImport(curr, load_val_i32, {Type::i32, Type::i32}, Type::i32);
+    addImport(curr, load_val_i64, {Type::i32, Type::i64}, Type::i64);
+    addImport(curr, load_val_f32, {Type::i32, Type::f32}, Type::f32);
+    addImport(curr, load_val_f64, {Type::i32, Type::f64}, Type::f64);
+
+    // Store.
+    addImport(
+      curr, store_ptr, {Type::i32, Type::i32, indexType, indexType}, indexType);
+    addImport(curr, store_val_i32, {Type::i32, Type::i32}, Type::i32);
+    addImport(curr, store_val_i64, {Type::i32, Type::i64}, Type::i64);
+    addImport(curr, store_val_f32, {Type::i32, Type::f32}, Type::f32);
+    addImport(curr, store_val_f64, {Type::i32, Type::f64}, Type::f64);
+
+    if (curr->features.hasGC()) {
+      // Struct get/set.
+      addImport(curr, struct_get_val_i32, {Type::i32, Type::i32}, Type::i32);
+      addImport(curr, struct_get_val_i64, {Type::i32, Type::i64}, Type::i64);
+      addImport(curr, struct_get_val_f32, {Type::i32, Type::f32}, Type::f32);
+      addImport(curr, struct_get_val_f64, {Type::i32, Type::f64}, Type::f64);
+      addImport(curr, struct_set_val_i32, {Type::i32, Type::i32}, Type::i32);
+      addImport(curr, struct_set_val_i64, {Type::i32, Type::i64}, Type::i64);
+      addImport(curr, struct_set_val_f32, {Type::i32, Type::f32}, Type::f32);
+      addImport(curr, struct_set_val_f64, {Type::i32, Type::f64}, Type::f64);
+
+      // Array get/set.
+      addImport(curr, array_get_val_i32, {Type::i32, Type::i32}, Type::i32);
+      addImport(curr, array_get_val_i64, {Type::i32, Type::i64}, Type::i64);
+      addImport(curr, array_get_val_f32, {Type::i32, Type::f32}, Type::f32);
+      addImport(curr, array_get_val_f64, {Type::i32, Type::f64}, Type::f64);
+      addImport(curr, array_set_val_i32, {Type::i32, Type::i32}, Type::i32);
+      addImport(curr, array_set_val_i64, {Type::i32, Type::i64}, Type::i64);
+      addImport(curr, array_set_val_f32, {Type::i32, Type::f32}, Type::f32);
+      addImport(curr, array_set_val_f64, {Type::i32, Type::f64}, Type::f64);
+      addImport(curr, array_get_index, {Type::i32, Type::i32}, Type::i32);
+      addImport(curr, array_set_index, {Type::i32, Type::i32}, Type::i32);
+    }
   }
 
 private:
   Index id;
 
-  void addImport(Module *curr, Name name, std::string sig) {
-    auto import = new Function;
-    import->name = name;
+  void addImport(Module* curr, Name name, Type params, Type results) {
+    auto import = Builder::makeFunction(name, Signature(params, results), {});
     import->module = ENV;
     import->base = name;
-    auto* functionType = ensureFunctionType(sig, curr);
-    import->type = functionType->name;
-    FunctionTypeUtils::fillFunction(import, functionType);
-    curr->addFunction(import);
+    curr->addFunction(std::move(import));
   }
 };
 
-Pass *createInstrumentMemoryPass() {
-  return new InstrumentMemory();
-}
+Pass* createInstrumentMemoryPass() { return new InstrumentMemory(); }
 
 } // namespace wasm

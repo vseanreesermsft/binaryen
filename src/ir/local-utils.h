@@ -18,32 +18,26 @@
 #define wasm_ir_local_utils_h
 
 #include <ir/effects.h>
+#include <ir/manipulation.h>
+#include <ir/utils.h>
 
 namespace wasm {
 
-struct GetLocalCounter : public PostWalker<GetLocalCounter> {
+struct LocalGetCounter : public PostWalker<LocalGetCounter> {
   std::vector<Index> num;
 
-  GetLocalCounter() = default;
-  GetLocalCounter(Function* func) {
-    analyze(func, func->body);
-  }
-  GetLocalCounter(Function* func, Expression* ast) {
-    analyze(func, ast);
-  }
+  LocalGetCounter() = default;
+  LocalGetCounter(Function* func) { analyze(func, func->body); }
+  LocalGetCounter(Function* func, Expression* ast) { analyze(func, ast); }
 
-  void analyze(Function* func) {
-    analyze(func, func->body);
-  }
+  void analyze(Function* func) { analyze(func, func->body); }
   void analyze(Function* func, Expression* ast) {
+    num.clear();
     num.resize(func->getNumLocals());
-    std::fill(num.begin(), num.end(), 0);
     walk(ast);
   }
 
-  void visitGetLocal(GetLocal *curr) {
-    num[curr->index]++;
-  }
+  void visitLocalGet(LocalGet* curr) { num[curr->index]++; }
 };
 
 // Removes trivially unneeded sets: sets for whom there is no possible get, and
@@ -51,29 +45,41 @@ struct GetLocalCounter : public PostWalker<GetLocalCounter> {
 struct UnneededSetRemover : public PostWalker<UnneededSetRemover> {
   PassOptions& passOptions;
 
-  GetLocalCounter* getLocalCounter = nullptr;
+  LocalGetCounter* localGetCounter = nullptr;
+  Module& module;
 
-  UnneededSetRemover(Function* func, PassOptions& passOptions) : passOptions(passOptions) {
-    GetLocalCounter counter(func);
-    UnneededSetRemover inner(counter, func, passOptions);
+  UnneededSetRemover(Function* func, PassOptions& passOptions, Module& module)
+    : passOptions(passOptions), module(module) {
+    LocalGetCounter counter(func);
+    UnneededSetRemover inner(counter, func, passOptions, module);
     removed = inner.removed;
   }
 
-  UnneededSetRemover(GetLocalCounter& getLocalCounter, Function* func, PassOptions& passOptions) : passOptions(passOptions), getLocalCounter(&getLocalCounter) {
+  UnneededSetRemover(LocalGetCounter& localGetCounter,
+                     Function* func,
+                     PassOptions& passOptions,
+                     Module& module)
+    : passOptions(passOptions), localGetCounter(&localGetCounter),
+      module(module) {
     walk(func->body);
+
+    if (refinalize) {
+      ReFinalize().walkFunctionInModule(func, &module);
+    }
   }
 
   bool removed = false;
+  bool refinalize = false;
 
-  void visitSetLocal(SetLocal *curr) {
+  void visitLocalSet(LocalSet* curr) {
     // If no possible uses, remove.
-    if (getLocalCounter->num[curr->index] == 0) {
+    if (localGetCounter->num[curr->index] == 0) {
       remove(curr);
     }
     // If setting the same value as we already have, remove.
     auto* value = curr->value;
     while (true) {
-      if (auto* set = value->dynCast<SetLocal>()) {
+      if (auto* set = value->dynCast<LocalSet>()) {
         if (set->index == curr->index) {
           remove(curr);
         } else {
@@ -81,7 +87,7 @@ struct UnneededSetRemover : public PostWalker<UnneededSetRemover> {
           value = set->value;
           continue;
         }
-      } else if (auto* get = value->dynCast<GetLocal>()) {
+      } else if (auto* get = value->dynCast<LocalGet>()) {
         if (get->index == curr->index) {
           remove(curr);
         }
@@ -90,12 +96,17 @@ struct UnneededSetRemover : public PostWalker<UnneededSetRemover> {
     }
   }
 
-  void remove(SetLocal* set) {
+  void remove(LocalSet* set) {
     auto* value = set->value;
     if (set->isTee()) {
       replaceCurrent(value);
-    } else if (EffectAnalyzer(passOptions, set->value).hasSideEffects()) {
-      Drop* drop = ExpressionManipulator::convert<SetLocal, Drop>(set);
+      if (value->type != set->type) {
+        // The value is more refined, so we'll need to refinalize.
+        refinalize = true;
+      }
+    } else if (EffectAnalyzer(passOptions, module, set->value)
+                 .hasSideEffects()) {
+      Drop* drop = ExpressionManipulator::convert<LocalSet, Drop>(set);
       drop->value = value;
       drop->finalize();
     } else {
@@ -108,4 +119,3 @@ struct UnneededSetRemover : public PostWalker<UnneededSetRemover> {
 } // namespace wasm
 
 #endif // wasm_ir_local_utils_h
-

@@ -28,48 +28,50 @@ instructions = [
     ("br_if",          "makeBreak(s)"),
     ("br_table",       "makeBreakTable(s)"),
     ("return",         "makeReturn(s)"),
-    ("call",           "makeCall(s)"),
-    ("call_indirect",  "makeCallIndirect(s)"),
+    ("call",           "makeCall(s, /*isReturn=*/false)"),
+    ("call_indirect",  "makeCallIndirect(s, /*isReturn=*/false)"),
+    ("return_call",    "makeCall(s, /*isReturn=*/true)"),
+    ("return_call_indirect", "makeCallIndirect(s, /*isReturn=*/true)"),
     ("drop",           "makeDrop(s)"),
     ("select",         "makeSelect(s)"),
-    ("local.get",      "makeGetLocal(s)"),
-    ("local.set",      "makeSetLocal(s)"),
-    ("local.tee",      "makeTeeLocal(s)"),
-    ("global.get",     "makeGetGlobal(s)"),
-    ("global.set",     "makeSetGlobal(s)"),
+    ("local.get",      "makeLocalGet(s)"),
+    ("local.set",      "makeLocalSet(s)"),
+    ("local.tee",      "makeLocalTee(s)"),
+    ("global.get",     "makeGlobalGet(s)"),
+    ("global.set",     "makeGlobalSet(s)"),
     ("memory.init",    "makeMemoryInit(s)"),
     ("data.drop",      "makeDataDrop(s)"),
     ("memory.copy",    "makeMemoryCopy(s)"),
     ("memory.fill",    "makeMemoryFill(s)"),
-    ("i32.load",       "makeLoad(s, i32, /*isAtomic=*/false)"),
-    ("i64.load",       "makeLoad(s, i64, /*isAtomic=*/false)"),
-    ("f32.load",       "makeLoad(s, f32, /*isAtomic=*/false)"),
-    ("f64.load",       "makeLoad(s, f64, /*isAtomic=*/false)"),
-    ("i32.load8_s",    "makeLoad(s, i32, /*isAtomic=*/false)"),
-    ("i32.load8_u",    "makeLoad(s, i32, /*isAtomic=*/false)"),
-    ("i32.load16_s",   "makeLoad(s, i32, /*isAtomic=*/false)"),
-    ("i32.load16_u",   "makeLoad(s, i32, /*isAtomic=*/false)"),
-    ("i64.load8_s",    "makeLoad(s, i64, /*isAtomic=*/false)"),
-    ("i64.load8_u",    "makeLoad(s, i64, /*isAtomic=*/false)"),
-    ("i64.load16_s",   "makeLoad(s, i64, /*isAtomic=*/false)"),
-    ("i64.load16_u",   "makeLoad(s, i64, /*isAtomic=*/false)"),
-    ("i64.load32_s",   "makeLoad(s, i64, /*isAtomic=*/false)"),
-    ("i64.load32_u",   "makeLoad(s, i64, /*isAtomic=*/false)"),
-    ("i32.store",      "makeStore(s, i32, /*isAtomic=*/false)"),
-    ("i64.store",      "makeStore(s, i64, /*isAtomic=*/false)"),
-    ("f32.store",      "makeStore(s, f32, /*isAtomic=*/false)"),
-    ("f64.store",      "makeStore(s, f64, /*isAtomic=*/false)"),
-    ("i32.store8",     "makeStore(s, i32, /*isAtomic=*/false)"),
-    ("i32.store16",    "makeStore(s, i32, /*isAtomic=*/false)"),
-    ("i64.store8",     "makeStore(s, i64, /*isAtomic=*/false)"),
-    ("i64.store16",    "makeStore(s, i64, /*isAtomic=*/false)"),
-    ("i64.store32",    "makeStore(s, i64, /*isAtomic=*/false)"),
-    ("current_memory", "makeHost(s, HostOp::CurrentMemory)"),
-    ("grow_memory",    "makeHost(s, HostOp::GrowMemory)"),
-    ("i32.const",      "makeConst(s, i32)"),
-    ("i64.const",      "makeConst(s, i64)"),
-    ("f32.const",      "makeConst(s, f32)"),
-    ("f64.const",      "makeConst(s, f64)"),
+    ("i32.load",       "makeLoad(s, Type::i32, /*signed=*/false, 4, /*isAtomic=*/false)"),
+    ("i64.load",       "makeLoad(s, Type::i64, /*signed=*/false, 8, /*isAtomic=*/false)"),
+    ("f32.load",       "makeLoad(s, Type::f32, /*signed=*/false, 4, /*isAtomic=*/false)"),
+    ("f64.load",       "makeLoad(s, Type::f64, /*signed=*/false, 8, /*isAtomic=*/false)"),
+    ("i32.load8_s",    "makeLoad(s, Type::i32, /*signed=*/true, 1, /*isAtomic=*/false)"),
+    ("i32.load8_u",    "makeLoad(s, Type::i32, /*signed=*/false, 1, /*isAtomic=*/false)"),
+    ("i32.load16_s",   "makeLoad(s, Type::i32, /*signed=*/true, 2, /*isAtomic=*/false)"),
+    ("i32.load16_u",   "makeLoad(s, Type::i32, /*signed=*/false, 2, /*isAtomic=*/false)"),
+    ("i64.load8_s",    "makeLoad(s, Type::i64, /*signed=*/true, 1, /*isAtomic=*/false)"),
+    ("i64.load8_u",    "makeLoad(s, Type::i64, /*signed=*/false, 1, /*isAtomic=*/false)"),
+    ("i64.load16_s",   "makeLoad(s, Type::i64, /*signed=*/true, 2, /*isAtomic=*/false)"),
+    ("i64.load16_u",   "makeLoad(s, Type::i64, /*signed=*/false, 2, /*isAtomic=*/false)"),
+    ("i64.load32_s",   "makeLoad(s, Type::i64, /*signed=*/true, 4, /*isAtomic=*/false)"),
+    ("i64.load32_u",   "makeLoad(s, Type::i64, /*signed=*/false, 4, /*isAtomic=*/false)"),
+    ("i32.store",      "makeStore(s, Type::i32, 4, /*isAtomic=*/false)"),
+    ("i64.store",      "makeStore(s, Type::i64, 8, /*isAtomic=*/false)"),
+    ("f32.store",      "makeStore(s, Type::f32, 4, /*isAtomic=*/false)"),
+    ("f64.store",      "makeStore(s, Type::f64, 8, /*isAtomic=*/false)"),
+    ("i32.store8",     "makeStore(s, Type::i32, 1, /*isAtomic=*/false)"),
+    ("i32.store16",    "makeStore(s, Type::i32, 2, /*isAtomic=*/false)"),
+    ("i64.store8",     "makeStore(s, Type::i64, 1, /*isAtomic=*/false)"),
+    ("i64.store16",    "makeStore(s, Type::i64, 2, /*isAtomic=*/false)"),
+    ("i64.store32",    "makeStore(s, Type::i64, 4, /*isAtomic=*/false)"),
+    ("memory.size",    "makeMemorySize(s)"),
+    ("memory.grow",    "makeMemoryGrow(s)"),
+    ("i32.const",      "makeConst(s, Type::i32)"),
+    ("i64.const",      "makeConst(s, Type::i64)"),
+    ("f32.const",      "makeConst(s, Type::f32)"),
+    ("f64.const",      "makeConst(s, Type::f64)"),
     ("i32.eqz",        "makeUnary(s, UnaryOp::EqZInt32)"),
     ("i32.eq",         "makeBinary(s, BinaryOp::EqInt32)"),
     ("i32.ne",         "makeBinary(s, BinaryOp::NeInt32)"),
@@ -199,72 +201,73 @@ instructions = [
     ("i64.extend16_s",      "makeUnary(s, UnaryOp::ExtendS16Int64)"),
     ("i64.extend32_s",      "makeUnary(s, UnaryOp::ExtendS32Int64)"),
     # atomic instructions
-    ("atomic.notify",           "makeAtomicNotify(s)"),
-    ("i32.atomic.wait",         "makeAtomicWait(s, i32)"),
-    ("i64.atomic.wait",         "makeAtomicWait(s, i64)"),
-    ("i32.atomic.load8_u",      "makeLoad(s, i32, /*isAtomic=*/true)"),
-    ("i32.atomic.load16_u",     "makeLoad(s, i32, /*isAtomic=*/true)"),
-    ("i32.atomic.load",         "makeLoad(s, i32, /*isAtomic=*/true)"),
-    ("i64.atomic.load8_u",      "makeLoad(s, i64, /*isAtomic=*/true)"),
-    ("i64.atomic.load16_u",     "makeLoad(s, i64, /*isAtomic=*/true)"),
-    ("i64.atomic.load32_u",     "makeLoad(s, i64, /*isAtomic=*/true)"),
-    ("i64.atomic.load",         "makeLoad(s, i64, /*isAtomic=*/true)"),
-    ("i32.atomic.store8",       "makeStore(s, i32, /*isAtomic=*/true)"),
-    ("i32.atomic.store16",      "makeStore(s, i32, /*isAtomic=*/true)"),
-    ("i32.atomic.store",        "makeStore(s, i32, /*isAtomic=*/true)"),
-    ("i64.atomic.store8",       "makeStore(s, i64, /*isAtomic=*/true)"),
-    ("i64.atomic.store16",      "makeStore(s, i64, /*isAtomic=*/true)"),
-    ("i64.atomic.store32",      "makeStore(s, i64, /*isAtomic=*/true)"),
-    ("i64.atomic.store",        "makeStore(s, i64, /*isAtomic=*/true)"),
-    ("i32.atomic.rmw8.add_u",   "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw16.add_u",  "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw.add",      "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i64.atomic.rmw8.add_u",   "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw16.add_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw32.add_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw.add",      "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i32.atomic.rmw8.sub_u",   "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw16.sub_u",  "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw.sub",      "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i64.atomic.rmw8.sub_u",   "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw16.sub_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw32.sub_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw.sub",      "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i32.atomic.rmw8.and_u",   "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw16.and_u",  "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw.and",      "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i64.atomic.rmw8.and_u",   "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw16.and_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw32.and_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw.and",      "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i32.atomic.rmw8.or_u",    "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw16.or_u",   "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw.or",       "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i64.atomic.rmw8.or_u",    "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw16.or_u",   "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw32.or_u",   "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw.or",       "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i32.atomic.rmw8.xor_u",   "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw16.xor_u",  "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw.xor",      "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i64.atomic.rmw8.xor_u",   "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw16.xor_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw32.xor_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw.xor",      "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i32.atomic.rmw8.xchg_u",  "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw16.xchg_u", "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw.xchg",     "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i64.atomic.rmw8.xchg_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw16.xchg_u", "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw32.xchg_u", "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw.xchg",     "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i32.atomic.rmw8.cmpxchg_u",  "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw16.cmpxchg_u", "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i32.atomic.rmw.cmpxchg",     "makeAtomicRMWOrCmpxchg(s, i32)"),
-    ("i64.atomic.rmw8.cmpxchg_u",  "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw16.cmpxchg_u", "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw32.cmpxchg_u", "makeAtomicRMWOrCmpxchg(s, i64)"),
-    ("i64.atomic.rmw.cmpxchg",     "makeAtomicRMWOrCmpxchg(s, i64)"),
+    ("memory.atomic.notify",    "makeAtomicNotify(s)"),
+    ("memory.atomic.wait32",    "makeAtomicWait(s, Type::i32)"),
+    ("memory.atomic.wait64",    "makeAtomicWait(s, Type::i64)"),
+    ("atomic.fence",            "makeAtomicFence(s)"),
+    ("i32.atomic.load8_u",      "makeLoad(s, Type::i32, /*signed=*/false, 1, /*isAtomic=*/true)"),
+    ("i32.atomic.load16_u",     "makeLoad(s, Type::i32, /*signed=*/false, 2, /*isAtomic=*/true)"),
+    ("i32.atomic.load",         "makeLoad(s, Type::i32, /*signed=*/false, 4, /*isAtomic=*/true)"),
+    ("i64.atomic.load8_u",      "makeLoad(s, Type::i64, /*signed=*/false, 1, /*isAtomic=*/true)"),
+    ("i64.atomic.load16_u",     "makeLoad(s, Type::i64, /*signed=*/false, 2, /*isAtomic=*/true)"),
+    ("i64.atomic.load32_u",     "makeLoad(s, Type::i64, /*signed=*/false, 4, /*isAtomic=*/true)"),
+    ("i64.atomic.load",         "makeLoad(s, Type::i64, /*signed=*/false, 8, /*isAtomic=*/true)"),
+    ("i32.atomic.store8",       "makeStore(s, Type::i32, 1, /*isAtomic=*/true)"),
+    ("i32.atomic.store16",      "makeStore(s, Type::i32, 2, /*isAtomic=*/true)"),
+    ("i32.atomic.store",        "makeStore(s, Type::i32, 4, /*isAtomic=*/true)"),
+    ("i64.atomic.store8",       "makeStore(s, Type::i64, 1, /*isAtomic=*/true)"),
+    ("i64.atomic.store16",      "makeStore(s, Type::i64, 2, /*isAtomic=*/true)"),
+    ("i64.atomic.store32",      "makeStore(s, Type::i64, 4, /*isAtomic=*/true)"),
+    ("i64.atomic.store",        "makeStore(s, Type::i64, 8, /*isAtomic=*/true)"),
+    ("i32.atomic.rmw8.add_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWAdd, Type::i32, 1)"),
+    ("i32.atomic.rmw16.add_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWAdd, Type::i32, 2)"),
+    ("i32.atomic.rmw.add",      "makeAtomicRMW(s, AtomicRMWOp::RMWAdd, Type::i32, 4)"),
+    ("i64.atomic.rmw8.add_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWAdd, Type::i64, 1)"),
+    ("i64.atomic.rmw16.add_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWAdd, Type::i64, 2)"),
+    ("i64.atomic.rmw32.add_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWAdd, Type::i64, 4)"),
+    ("i64.atomic.rmw.add",      "makeAtomicRMW(s, AtomicRMWOp::RMWAdd, Type::i64, 8)"),
+    ("i32.atomic.rmw8.sub_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWSub, Type::i32, 1)"),
+    ("i32.atomic.rmw16.sub_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWSub, Type::i32, 2)"),
+    ("i32.atomic.rmw.sub",      "makeAtomicRMW(s, AtomicRMWOp::RMWSub, Type::i32, 4)"),
+    ("i64.atomic.rmw8.sub_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWSub, Type::i64, 1)"),
+    ("i64.atomic.rmw16.sub_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWSub, Type::i64, 2)"),
+    ("i64.atomic.rmw32.sub_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWSub, Type::i64, 4)"),
+    ("i64.atomic.rmw.sub",      "makeAtomicRMW(s, AtomicRMWOp::RMWSub, Type::i64, 8)"),
+    ("i32.atomic.rmw8.and_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWAnd, Type::i32, 1)"),
+    ("i32.atomic.rmw16.and_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWAnd, Type::i32, 2)"),
+    ("i32.atomic.rmw.and",      "makeAtomicRMW(s, AtomicRMWOp::RMWAnd, Type::i32, 4)"),
+    ("i64.atomic.rmw8.and_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWAnd, Type::i64, 1)"),
+    ("i64.atomic.rmw16.and_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWAnd, Type::i64, 2)"),
+    ("i64.atomic.rmw32.and_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWAnd, Type::i64, 4)"),
+    ("i64.atomic.rmw.and",      "makeAtomicRMW(s, AtomicRMWOp::RMWAnd, Type::i64, 8)"),
+    ("i32.atomic.rmw8.or_u",    "makeAtomicRMW(s, AtomicRMWOp::RMWOr, Type::i32, 1)"),
+    ("i32.atomic.rmw16.or_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWOr, Type::i32, 2)"),
+    ("i32.atomic.rmw.or",       "makeAtomicRMW(s, AtomicRMWOp::RMWOr, Type::i32, 4)"),
+    ("i64.atomic.rmw8.or_u",    "makeAtomicRMW(s, AtomicRMWOp::RMWOr, Type::i64, 1)"),
+    ("i64.atomic.rmw16.or_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWOr, Type::i64, 2)"),
+    ("i64.atomic.rmw32.or_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWOr, Type::i64, 4)"),
+    ("i64.atomic.rmw.or",       "makeAtomicRMW(s, AtomicRMWOp::RMWOr, Type::i64, 8)"),
+    ("i32.atomic.rmw8.xor_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWXor, Type::i32, 1)"),
+    ("i32.atomic.rmw16.xor_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWXor, Type::i32, 2)"),
+    ("i32.atomic.rmw.xor",      "makeAtomicRMW(s, AtomicRMWOp::RMWXor, Type::i32, 4)"),
+    ("i64.atomic.rmw8.xor_u",   "makeAtomicRMW(s, AtomicRMWOp::RMWXor, Type::i64, 1)"),
+    ("i64.atomic.rmw16.xor_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWXor, Type::i64, 2)"),
+    ("i64.atomic.rmw32.xor_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWXor, Type::i64, 4)"),
+    ("i64.atomic.rmw.xor",      "makeAtomicRMW(s, AtomicRMWOp::RMWXor, Type::i64, 8)"),
+    ("i32.atomic.rmw8.xchg_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWXchg, Type::i32, 1)"),
+    ("i32.atomic.rmw16.xchg_u", "makeAtomicRMW(s, AtomicRMWOp::RMWXchg, Type::i32, 2)"),
+    ("i32.atomic.rmw.xchg",     "makeAtomicRMW(s, AtomicRMWOp::RMWXchg, Type::i32, 4)"),
+    ("i64.atomic.rmw8.xchg_u",  "makeAtomicRMW(s, AtomicRMWOp::RMWXchg, Type::i64, 1)"),
+    ("i64.atomic.rmw16.xchg_u", "makeAtomicRMW(s, AtomicRMWOp::RMWXchg, Type::i64, 2)"),
+    ("i64.atomic.rmw32.xchg_u", "makeAtomicRMW(s, AtomicRMWOp::RMWXchg, Type::i64, 4)"),
+    ("i64.atomic.rmw.xchg",     "makeAtomicRMW(s, AtomicRMWOp::RMWXchg, Type::i64, 8)"),
+    ("i32.atomic.rmw8.cmpxchg_u",  "makeAtomicCmpxchg(s, Type::i32, 1)"),
+    ("i32.atomic.rmw16.cmpxchg_u", "makeAtomicCmpxchg(s, Type::i32, 2)"),
+    ("i32.atomic.rmw.cmpxchg",     "makeAtomicCmpxchg(s, Type::i32, 4)"),
+    ("i64.atomic.rmw8.cmpxchg_u",  "makeAtomicCmpxchg(s, Type::i64, 1)"),
+    ("i64.atomic.rmw16.cmpxchg_u", "makeAtomicCmpxchg(s, Type::i64, 2)"),
+    ("i64.atomic.rmw32.cmpxchg_u", "makeAtomicCmpxchg(s, Type::i64, 4)"),
+    ("i64.atomic.rmw.cmpxchg",     "makeAtomicCmpxchg(s, Type::i64, 8)"),
     # nontrapping float-to-int instructions
     ("i32.trunc_sat_f32_s", "makeUnary(s, UnaryOp::TruncSatSFloat32ToInt32)"),
     ("i32.trunc_sat_f32_u", "makeUnary(s, UnaryOp::TruncSatUFloat32ToInt32)"),
@@ -275,10 +278,10 @@ instructions = [
     ("i64.trunc_sat_f64_s", "makeUnary(s, UnaryOp::TruncSatSFloat64ToInt64)"),
     ("i64.trunc_sat_f64_u", "makeUnary(s, UnaryOp::TruncSatUFloat64ToInt64)"),
     # SIMD ops
-    ("v128.load",            "makeLoad(s, v128, /*isAtomic=*/false)"),
-    ("v128.store",           "makeStore(s, v128, /*isAtomic=*/false)"),
-    ("v128.const",           "makeConst(s, v128)"),
-    ("v8x16.shuffle",        "makeSIMDShuffle(s)"),
+    ("v128.load",            "makeLoad(s, Type::v128, /*signed=*/false, 16, /*isAtomic=*/false)"),
+    ("v128.store",           "makeStore(s, Type::v128, 16, /*isAtomic=*/false)"),
+    ("v128.const",           "makeConst(s, Type::v128)"),
+    ("i8x16.shuffle",        "makeSIMDShuffle(s)"),
     ("i8x16.splat",          "makeUnary(s, UnaryOp::SplatVecI8x16)"),
     ("i8x16.extract_lane_s", "makeSIMDExtract(s, SIMDExtractOp::ExtractLaneSVecI8x16, 16)"),
     ("i8x16.extract_lane_u", "makeSIMDExtract(s, SIMDExtractOp::ExtractLaneUVecI8x16, 16)"),
@@ -329,6 +332,12 @@ instructions = [
     ("i32x4.le_u",           "makeBinary(s, BinaryOp::LeUVecI32x4)"),
     ("i32x4.ge_s",           "makeBinary(s, BinaryOp::GeSVecI32x4)"),
     ("i32x4.ge_u",           "makeBinary(s, BinaryOp::GeUVecI32x4)"),
+    ("i64x2.eq",             "makeBinary(s, BinaryOp::EqVecI64x2)"),
+    ("i64x2.ne",             "makeBinary(s, BinaryOp::NeVecI64x2)"),
+    ("i64x2.lt_s",           "makeBinary(s, BinaryOp::LtSVecI64x2)"),
+    ("i64x2.gt_s",           "makeBinary(s, BinaryOp::GtSVecI64x2)"),
+    ("i64x2.le_s",           "makeBinary(s, BinaryOp::LeSVecI64x2)"),
+    ("i64x2.ge_s",           "makeBinary(s, BinaryOp::GeSVecI64x2)"),
     ("f32x4.eq",             "makeBinary(s, BinaryOp::EqVecF32x4)"),
     ("f32x4.ne",             "makeBinary(s, BinaryOp::NeVecF32x4)"),
     ("f32x4.lt",             "makeBinary(s, BinaryOp::LtVecF32x4)"),
@@ -345,50 +354,93 @@ instructions = [
     ("v128.and",             "makeBinary(s, BinaryOp::AndVec128)"),
     ("v128.or",              "makeBinary(s, BinaryOp::OrVec128)"),
     ("v128.xor",             "makeBinary(s, BinaryOp::XorVec128)"),
-    ("v128.bitselect",       "makeSIMDBitselect(s)"),
+    ("v128.andnot",          "makeBinary(s, BinaryOp::AndNotVec128)"),
+    ("v128.any_true",        "makeUnary(s, UnaryOp::AnyTrueVec128)"),
+    ("v128.bitselect",       "makeSIMDTernary(s, SIMDTernaryOp::Bitselect)"),
+    ("v128.load8_lane",      "makeSIMDLoadStoreLane(s, SIMDLoadStoreLaneOp::Load8LaneVec128, 1)"),
+    ("v128.load16_lane",     "makeSIMDLoadStoreLane(s, SIMDLoadStoreLaneOp::Load16LaneVec128, 2)"),
+    ("v128.load32_lane",     "makeSIMDLoadStoreLane(s, SIMDLoadStoreLaneOp::Load32LaneVec128, 4)"),
+    ("v128.load64_lane",     "makeSIMDLoadStoreLane(s, SIMDLoadStoreLaneOp::Load64LaneVec128, 8)"),
+    ("v128.store8_lane",     "makeSIMDLoadStoreLane(s, SIMDLoadStoreLaneOp::Store8LaneVec128, 1)"),
+    ("v128.store16_lane",    "makeSIMDLoadStoreLane(s, SIMDLoadStoreLaneOp::Store16LaneVec128, 2)"),
+    ("v128.store32_lane",    "makeSIMDLoadStoreLane(s, SIMDLoadStoreLaneOp::Store32LaneVec128, 4)"),
+    ("v128.store64_lane",    "makeSIMDLoadStoreLane(s, SIMDLoadStoreLaneOp::Store64LaneVec128, 8)"),
+    ("i8x16.popcnt",         "makeUnary(s, UnaryOp::PopcntVecI8x16)"),
+    ("i8x16.abs",            "makeUnary(s, UnaryOp::AbsVecI8x16)"),
     ("i8x16.neg",            "makeUnary(s, UnaryOp::NegVecI8x16)"),
-    ("i8x16.any_true",       "makeUnary(s, UnaryOp::AnyTrueVecI8x16)"),
     ("i8x16.all_true",       "makeUnary(s, UnaryOp::AllTrueVecI8x16)"),
+    ("i8x16.bitmask",        "makeUnary(s, UnaryOp::BitmaskVecI8x16)"),
     ("i8x16.shl",            "makeSIMDShift(s, SIMDShiftOp::ShlVecI8x16)"),
     ("i8x16.shr_s",          "makeSIMDShift(s, SIMDShiftOp::ShrSVecI8x16)"),
     ("i8x16.shr_u",          "makeSIMDShift(s, SIMDShiftOp::ShrUVecI8x16)"),
     ("i8x16.add",            "makeBinary(s, BinaryOp::AddVecI8x16)"),
-    ("i8x16.add_saturate_s", "makeBinary(s, BinaryOp::AddSatSVecI8x16)"),
-    ("i8x16.add_saturate_u", "makeBinary(s, BinaryOp::AddSatUVecI8x16)"),
+    ("i8x16.add_sat_s",      "makeBinary(s, BinaryOp::AddSatSVecI8x16)"),
+    ("i8x16.add_sat_u",      "makeBinary(s, BinaryOp::AddSatUVecI8x16)"),
     ("i8x16.sub",            "makeBinary(s, BinaryOp::SubVecI8x16)"),
-    ("i8x16.sub_saturate_s", "makeBinary(s, BinaryOp::SubSatSVecI8x16)"),
-    ("i8x16.sub_saturate_u", "makeBinary(s, BinaryOp::SubSatUVecI8x16)"),
-    ("i8x16.mul",            "makeBinary(s, BinaryOp::MulVecI8x16)"),
+    ("i8x16.sub_sat_s",      "makeBinary(s, BinaryOp::SubSatSVecI8x16)"),
+    ("i8x16.sub_sat_u",      "makeBinary(s, BinaryOp::SubSatUVecI8x16)"),
+    ("i8x16.min_s",          "makeBinary(s, BinaryOp::MinSVecI8x16)"),
+    ("i8x16.min_u",          "makeBinary(s, BinaryOp::MinUVecI8x16)"),
+    ("i8x16.max_s",          "makeBinary(s, BinaryOp::MaxSVecI8x16)"),
+    ("i8x16.max_u",          "makeBinary(s, BinaryOp::MaxUVecI8x16)"),
+    ("i8x16.avgr_u",         "makeBinary(s, BinaryOp::AvgrUVecI8x16)"),
+    ("i16x8.abs",            "makeUnary(s, UnaryOp::AbsVecI16x8)"),
     ("i16x8.neg",            "makeUnary(s, UnaryOp::NegVecI16x8)"),
-    ("i16x8.any_true",       "makeUnary(s, UnaryOp::AnyTrueVecI16x8)"),
     ("i16x8.all_true",       "makeUnary(s, UnaryOp::AllTrueVecI16x8)"),
+    ("i16x8.bitmask",        "makeUnary(s, UnaryOp::BitmaskVecI16x8)"),
     ("i16x8.shl",            "makeSIMDShift(s, SIMDShiftOp::ShlVecI16x8)"),
     ("i16x8.shr_s",          "makeSIMDShift(s, SIMDShiftOp::ShrSVecI16x8)"),
     ("i16x8.shr_u",          "makeSIMDShift(s, SIMDShiftOp::ShrUVecI16x8)"),
     ("i16x8.add",            "makeBinary(s, BinaryOp::AddVecI16x8)"),
-    ("i16x8.add_saturate_s", "makeBinary(s, BinaryOp::AddSatSVecI16x8)"),
-    ("i16x8.add_saturate_u", "makeBinary(s, BinaryOp::AddSatUVecI16x8)"),
+    ("i16x8.add_sat_s",      "makeBinary(s, BinaryOp::AddSatSVecI16x8)"),
+    ("i16x8.add_sat_u",      "makeBinary(s, BinaryOp::AddSatUVecI16x8)"),
     ("i16x8.sub",            "makeBinary(s, BinaryOp::SubVecI16x8)"),
-    ("i16x8.sub_saturate_s", "makeBinary(s, BinaryOp::SubSatSVecI16x8)"),
-    ("i16x8.sub_saturate_u", "makeBinary(s, BinaryOp::SubSatUVecI16x8)"),
+    ("i16x8.sub_sat_s",      "makeBinary(s, BinaryOp::SubSatSVecI16x8)"),
+    ("i16x8.sub_sat_u",      "makeBinary(s, BinaryOp::SubSatUVecI16x8)"),
     ("i16x8.mul",            "makeBinary(s, BinaryOp::MulVecI16x8)"),
+    ("i16x8.min_s",          "makeBinary(s, BinaryOp::MinSVecI16x8)"),
+    ("i16x8.min_u",          "makeBinary(s, BinaryOp::MinUVecI16x8)"),
+    ("i16x8.max_s",          "makeBinary(s, BinaryOp::MaxSVecI16x8)"),
+    ("i16x8.max_u",          "makeBinary(s, BinaryOp::MaxUVecI16x8)"),
+    ("i16x8.avgr_u",         "makeBinary(s, BinaryOp::AvgrUVecI16x8)"),
+    ("i16x8.q15mulr_sat_s",  "makeBinary(s, BinaryOp::Q15MulrSatSVecI16x8)"),
+    ("i16x8.extmul_low_i8x16_s", "makeBinary(s, BinaryOp::ExtMulLowSVecI16x8)"),
+    ("i16x8.extmul_high_i8x16_s", "makeBinary(s, BinaryOp::ExtMulHighSVecI16x8)"),
+    ("i16x8.extmul_low_i8x16_u", "makeBinary(s, BinaryOp::ExtMulLowUVecI16x8)"),
+    ("i16x8.extmul_high_i8x16_u", "makeBinary(s, BinaryOp::ExtMulHighUVecI16x8)"),
+    ("i32x4.abs",            "makeUnary(s, UnaryOp::AbsVecI32x4)"),
     ("i32x4.neg",            "makeUnary(s, UnaryOp::NegVecI32x4)"),
-    ("i32x4.any_true",       "makeUnary(s, UnaryOp::AnyTrueVecI32x4)"),
     ("i32x4.all_true",       "makeUnary(s, UnaryOp::AllTrueVecI32x4)"),
+    ("i32x4.bitmask",        "makeUnary(s, UnaryOp::BitmaskVecI32x4)"),
     ("i32x4.shl",            "makeSIMDShift(s, SIMDShiftOp::ShlVecI32x4)"),
     ("i32x4.shr_s",          "makeSIMDShift(s, SIMDShiftOp::ShrSVecI32x4)"),
     ("i32x4.shr_u",          "makeSIMDShift(s, SIMDShiftOp::ShrUVecI32x4)"),
     ("i32x4.add",            "makeBinary(s, BinaryOp::AddVecI32x4)"),
     ("i32x4.sub",            "makeBinary(s, BinaryOp::SubVecI32x4)"),
     ("i32x4.mul",            "makeBinary(s, BinaryOp::MulVecI32x4)"),
+    ("i32x4.min_s",          "makeBinary(s, BinaryOp::MinSVecI32x4)"),
+    ("i32x4.min_u",          "makeBinary(s, BinaryOp::MinUVecI32x4)"),
+    ("i32x4.max_s",          "makeBinary(s, BinaryOp::MaxSVecI32x4)"),
+    ("i32x4.max_u",          "makeBinary(s, BinaryOp::MaxUVecI32x4)"),
+    ("i32x4.dot_i16x8_s",    "makeBinary(s, BinaryOp::DotSVecI16x8ToVecI32x4)"),
+    ("i32x4.extmul_low_i16x8_s", "makeBinary(s, BinaryOp::ExtMulLowSVecI32x4)"),
+    ("i32x4.extmul_high_i16x8_s", "makeBinary(s, BinaryOp::ExtMulHighSVecI32x4)"),
+    ("i32x4.extmul_low_i16x8_u", "makeBinary(s, BinaryOp::ExtMulLowUVecI32x4)"),
+    ("i32x4.extmul_high_i16x8_u", "makeBinary(s, BinaryOp::ExtMulHighUVecI32x4)"),
+    ("i64x2.abs",            "makeUnary(s, UnaryOp::AbsVecI64x2)"),
     ("i64x2.neg",            "makeUnary(s, UnaryOp::NegVecI64x2)"),
-    ("i64x2.any_true",       "makeUnary(s, UnaryOp::AnyTrueVecI64x2)"),
     ("i64x2.all_true",       "makeUnary(s, UnaryOp::AllTrueVecI64x2)"),
+    ("i64x2.bitmask",        "makeUnary(s, UnaryOp::BitmaskVecI64x2)"),
     ("i64x2.shl",            "makeSIMDShift(s, SIMDShiftOp::ShlVecI64x2)"),
     ("i64x2.shr_s",          "makeSIMDShift(s, SIMDShiftOp::ShrSVecI64x2)"),
     ("i64x2.shr_u",          "makeSIMDShift(s, SIMDShiftOp::ShrUVecI64x2)"),
     ("i64x2.add",            "makeBinary(s, BinaryOp::AddVecI64x2)"),
     ("i64x2.sub",            "makeBinary(s, BinaryOp::SubVecI64x2)"),
+    ("i64x2.mul",            "makeBinary(s, BinaryOp::MulVecI64x2)"),
+    ("i64x2.extmul_low_i32x4_s", "makeBinary(s, BinaryOp::ExtMulLowSVecI64x2)"),
+    ("i64x2.extmul_high_i32x4_s", "makeBinary(s, BinaryOp::ExtMulHighSVecI64x2)"),
+    ("i64x2.extmul_low_i32x4_u", "makeBinary(s, BinaryOp::ExtMulLowUVecI64x2)"),
+    ("i64x2.extmul_high_i32x4_u", "makeBinary(s, BinaryOp::ExtMulHighUVecI64x2)"),
     ("f32x4.abs",            "makeUnary(s, UnaryOp::AbsVecF32x4)"),
     ("f32x4.neg",            "makeUnary(s, UnaryOp::NegVecF32x4)"),
     ("f32x4.sqrt",           "makeUnary(s, UnaryOp::SqrtVecF32x4)"),
@@ -398,6 +450,12 @@ instructions = [
     ("f32x4.div",            "makeBinary(s, BinaryOp::DivVecF32x4)"),
     ("f32x4.min",            "makeBinary(s, BinaryOp::MinVecF32x4)"),
     ("f32x4.max",            "makeBinary(s, BinaryOp::MaxVecF32x4)"),
+    ("f32x4.pmin",           "makeBinary(s, BinaryOp::PMinVecF32x4)"),
+    ("f32x4.pmax",           "makeBinary(s, BinaryOp::PMaxVecF32x4)"),
+    ("f32x4.ceil",           "makeUnary(s, UnaryOp::CeilVecF32x4)"),
+    ("f32x4.floor",          "makeUnary(s, UnaryOp::FloorVecF32x4)"),
+    ("f32x4.trunc",          "makeUnary(s, UnaryOp::TruncVecF32x4)"),
+    ("f32x4.nearest",        "makeUnary(s, UnaryOp::NearestVecF32x4)"),
     ("f64x2.abs",            "makeUnary(s, UnaryOp::AbsVecF64x2)"),
     ("f64x2.neg",            "makeUnary(s, UnaryOp::NegVecF64x2)"),
     ("f64x2.sqrt",           "makeUnary(s, UnaryOp::SqrtVecF64x2)"),
@@ -407,149 +465,341 @@ instructions = [
     ("f64x2.div",            "makeBinary(s, BinaryOp::DivVecF64x2)"),
     ("f64x2.min",            "makeBinary(s, BinaryOp::MinVecF64x2)"),
     ("f64x2.max",            "makeBinary(s, BinaryOp::MaxVecF64x2)"),
-    ("i32x4.trunc_sat_f32x4_s", "makeUnary(s, UnaryOp::TruncSatSVecF32x4ToVecI32x4)"),
-    ("i32x4.trunc_sat_f32x4_u", "makeUnary(s, UnaryOp::TruncSatUVecF32x4ToVecI32x4)"),
-    ("i64x2.trunc_sat_f64x2_s", "makeUnary(s, UnaryOp::TruncSatSVecF64x2ToVecI64x2)"),
-    ("i64x2.trunc_sat_f64x2_u", "makeUnary(s, UnaryOp::TruncSatUVecF64x2ToVecI64x2)"),
-    ("f32x4.convert_i32x4_s",   "makeUnary(s, UnaryOp::ConvertSVecI32x4ToVecF32x4)"),
-    ("f32x4.convert_i32x4_u",   "makeUnary(s, UnaryOp::ConvertUVecI32x4ToVecF32x4)"),
-    ("f64x2.convert_i64x2_s",   "makeUnary(s, UnaryOp::ConvertSVecI64x2ToVecF64x2)"),
-    ("f64x2.convert_i64x2_u",   "makeUnary(s, UnaryOp::ConvertUVecI64x2ToVecF64x2)")
+    ("f64x2.pmin",           "makeBinary(s, BinaryOp::PMinVecF64x2)"),
+    ("f64x2.pmax",           "makeBinary(s, BinaryOp::PMaxVecF64x2)"),
+    ("f64x2.ceil",           "makeUnary(s, UnaryOp::CeilVecF64x2)"),
+    ("f64x2.floor",          "makeUnary(s, UnaryOp::FloorVecF64x2)"),
+    ("f64x2.trunc",          "makeUnary(s, UnaryOp::TruncVecF64x2)"),
+    ("f64x2.nearest",        "makeUnary(s, UnaryOp::NearestVecF64x2)"),
+    ("i32x4.trunc_sat_f32x4_s",  "makeUnary(s, UnaryOp::TruncSatSVecF32x4ToVecI32x4)"),
+    ("i32x4.trunc_sat_f32x4_u",  "makeUnary(s, UnaryOp::TruncSatUVecF32x4ToVecI32x4)"),
+    ("f32x4.convert_i32x4_s",    "makeUnary(s, UnaryOp::ConvertSVecI32x4ToVecF32x4)"),
+    ("f32x4.convert_i32x4_u",    "makeUnary(s, UnaryOp::ConvertUVecI32x4ToVecF32x4)"),
+    ("v128.load8_splat",         "makeSIMDLoad(s, SIMDLoadOp::Load8SplatVec128, 1)"),
+    ("v128.load16_splat",        "makeSIMDLoad(s, SIMDLoadOp::Load16SplatVec128, 2)"),
+    ("v128.load32_splat",        "makeSIMDLoad(s, SIMDLoadOp::Load32SplatVec128, 4)"),
+    ("v128.load64_splat",        "makeSIMDLoad(s, SIMDLoadOp::Load64SplatVec128, 8)"),
+    ("v128.load8x8_s",           "makeSIMDLoad(s, SIMDLoadOp::Load8x8SVec128, 8)"),
+    ("v128.load8x8_u",           "makeSIMDLoad(s, SIMDLoadOp::Load8x8UVec128, 8)"),
+    ("v128.load16x4_s",          "makeSIMDLoad(s, SIMDLoadOp::Load16x4SVec128, 8)"),
+    ("v128.load16x4_u",          "makeSIMDLoad(s, SIMDLoadOp::Load16x4UVec128, 8)"),
+    ("v128.load32x2_s",          "makeSIMDLoad(s, SIMDLoadOp::Load32x2SVec128, 8)"),
+    ("v128.load32x2_u",          "makeSIMDLoad(s, SIMDLoadOp::Load32x2UVec128, 8)"),
+    ("v128.load32_zero",         "makeSIMDLoad(s, SIMDLoadOp::Load32ZeroVec128, 4)"),
+    ("v128.load64_zero",         "makeSIMDLoad(s, SIMDLoadOp::Load64ZeroVec128, 8)"),
+    ("i8x16.narrow_i16x8_s",     "makeBinary(s, BinaryOp::NarrowSVecI16x8ToVecI8x16)"),
+    ("i8x16.narrow_i16x8_u",     "makeBinary(s, BinaryOp::NarrowUVecI16x8ToVecI8x16)"),
+    ("i16x8.narrow_i32x4_s",     "makeBinary(s, BinaryOp::NarrowSVecI32x4ToVecI16x8)"),
+    ("i16x8.narrow_i32x4_u",     "makeBinary(s, BinaryOp::NarrowUVecI32x4ToVecI16x8)"),
+    ("i16x8.extend_low_i8x16_s",  "makeUnary(s, UnaryOp::ExtendLowSVecI8x16ToVecI16x8)"),
+    ("i16x8.extend_high_i8x16_s", "makeUnary(s, UnaryOp::ExtendHighSVecI8x16ToVecI16x8)"),
+    ("i16x8.extend_low_i8x16_u",  "makeUnary(s, UnaryOp::ExtendLowUVecI8x16ToVecI16x8)"),
+    ("i16x8.extend_high_i8x16_u", "makeUnary(s, UnaryOp::ExtendHighUVecI8x16ToVecI16x8)"),
+    ("i32x4.extend_low_i16x8_s",  "makeUnary(s, UnaryOp::ExtendLowSVecI16x8ToVecI32x4)"),
+    ("i32x4.extend_high_i16x8_s", "makeUnary(s, UnaryOp::ExtendHighSVecI16x8ToVecI32x4)"),
+    ("i32x4.extend_low_i16x8_u",  "makeUnary(s, UnaryOp::ExtendLowUVecI16x8ToVecI32x4)"),
+    ("i32x4.extend_high_i16x8_u", "makeUnary(s, UnaryOp::ExtendHighUVecI16x8ToVecI32x4)"),
+    ("i64x2.extend_low_i32x4_s",  "makeUnary(s, UnaryOp::ExtendLowSVecI32x4ToVecI64x2)"),
+    ("i64x2.extend_high_i32x4_s", "makeUnary(s, UnaryOp::ExtendHighSVecI32x4ToVecI64x2)"),
+    ("i64x2.extend_low_i32x4_u",  "makeUnary(s, UnaryOp::ExtendLowUVecI32x4ToVecI64x2)"),
+    ("i64x2.extend_high_i32x4_u", "makeUnary(s, UnaryOp::ExtendHighUVecI32x4ToVecI64x2)"),
+    ("i8x16.swizzle",             "makeBinary(s, BinaryOp::SwizzleVecI8x16)"),
+    ("i16x8.extadd_pairwise_i8x16_s", "makeUnary(s, UnaryOp::ExtAddPairwiseSVecI8x16ToI16x8)"),
+    ("i16x8.extadd_pairwise_i8x16_u", "makeUnary(s, UnaryOp::ExtAddPairwiseUVecI8x16ToI16x8)"),
+    ("i32x4.extadd_pairwise_i16x8_s", "makeUnary(s, UnaryOp::ExtAddPairwiseSVecI16x8ToI32x4)"),
+    ("i32x4.extadd_pairwise_i16x8_u", "makeUnary(s, UnaryOp::ExtAddPairwiseUVecI16x8ToI32x4)"),
+    ("f64x2.convert_low_i32x4_s",     "makeUnary(s, UnaryOp::ConvertLowSVecI32x4ToVecF64x2)"),
+    ("f64x2.convert_low_i32x4_u",     "makeUnary(s, UnaryOp::ConvertLowUVecI32x4ToVecF64x2)"),
+    ("i32x4.trunc_sat_f64x2_s_zero",  "makeUnary(s, UnaryOp::TruncSatZeroSVecF64x2ToVecI32x4)"),
+    ("i32x4.trunc_sat_f64x2_u_zero",  "makeUnary(s, UnaryOp::TruncSatZeroUVecF64x2ToVecI32x4)"),
+    ("f32x4.demote_f64x2_zero",       "makeUnary(s, UnaryOp::DemoteZeroVecF64x2ToVecF32x4)"),
+    ("f64x2.promote_low_f32x4",       "makeUnary(s, UnaryOp::PromoteLowVecF32x4ToVecF64x2)"),
+
+    # relaxed SIMD ops
+    ("i8x16.relaxed_swizzle", "makeBinary(s, BinaryOp::RelaxedSwizzleVecI8x16)"),
+    ("i32x4.relaxed_trunc_f32x4_s", "makeUnary(s, UnaryOp::RelaxedTruncSVecF32x4ToVecI32x4)"),
+    ("i32x4.relaxed_trunc_f32x4_u", "makeUnary(s, UnaryOp::RelaxedTruncUVecF32x4ToVecI32x4)"),
+    ("i32x4.relaxed_trunc_f64x2_s_zero", "makeUnary(s, UnaryOp::RelaxedTruncZeroSVecF64x2ToVecI32x4)"),
+    ("i32x4.relaxed_trunc_f64x2_u_zero", "makeUnary(s, UnaryOp::RelaxedTruncZeroUVecF64x2ToVecI32x4)"),
+    ("f32x4.relaxed_fma", "makeSIMDTernary(s, SIMDTernaryOp::RelaxedFmaVecF32x4)"),
+    ("f32x4.relaxed_fms", "makeSIMDTernary(s, SIMDTernaryOp::RelaxedFmsVecF32x4)"),
+    ("f64x2.relaxed_fma", "makeSIMDTernary(s, SIMDTernaryOp::RelaxedFmaVecF64x2)"),
+    ("f64x2.relaxed_fms", "makeSIMDTernary(s, SIMDTernaryOp::RelaxedFmsVecF64x2)"),
+    ("i8x16.laneselect", "makeSIMDTernary(s, SIMDTernaryOp::LaneselectI8x16)"),
+    ("i16x8.laneselect", "makeSIMDTernary(s, SIMDTernaryOp::LaneselectI16x8)"),
+    ("i32x4.laneselect", "makeSIMDTernary(s, SIMDTernaryOp::LaneselectI32x4)"),
+    ("i64x2.laneselect", "makeSIMDTernary(s, SIMDTernaryOp::LaneselectI64x2)"),
+    ("f32x4.relaxed_min", "makeBinary(s, BinaryOp::RelaxedMinVecF32x4)"),
+    ("f32x4.relaxed_max", "makeBinary(s, BinaryOp::RelaxedMaxVecF32x4)"),
+    ("f64x2.relaxed_min", "makeBinary(s, BinaryOp::RelaxedMinVecF64x2)"),
+    ("f64x2.relaxed_max", "makeBinary(s, BinaryOp::RelaxedMaxVecF64x2)"),
+    ("i16x8.relaxed_q15mulr_s", "makeBinary(s, BinaryOp::RelaxedQ15MulrSVecI16x8)"),
+    ("i16x8.dot_i8x16_i7x16_s", "makeBinary(s, BinaryOp::DotI8x16I7x16SToVecI16x8)"),
+    ("i32x4.dot_i8x16_i7x16_add_s", "makeSIMDTernary(s, SIMDTernaryOp::DotI8x16I7x16AddSToVecI32x4)"),
+
+    # reference types instructions
+    ("ref.null",             "makeRefNull(s)"),
+    ("ref.is_null",          "makeRefIsNull(s)"),
+    ("ref.func",             "makeRefFunc(s)"),
+    ("ref.eq",               "makeRefEq(s)"),
+    # table instructions
+    ("table.get",            "makeTableGet(s)"),
+    ("table.set",            "makeTableSet(s)"),
+    ("table.size",           "makeTableSize(s)"),
+    ("table.grow",           "makeTableGrow(s)"),
+    # TODO:
+    # table.init
+    # table.fill
+    # table.copy
+    #
+    # exception handling instructions
+    ("try",                  "makeTry(s)"),
+    ("throw",                "makeThrow(s)"),
+    ("rethrow",              "makeRethrow(s)"),
+    # Multivalue pseudoinstructions
+    ("tuple.make",           "makeTupleMake(s)"),
+    ("tuple.extract",        "makeTupleExtract(s)"),
+    ("pop",                  "makePop(s)"),
+    # Typed function references instructions
+    ("call_ref",             "makeCallRef(s, /*isReturn=*/false)"),
+    ("return_call_ref",      "makeCallRef(s, /*isReturn=*/true)"),
+    # GC
+    ("i31.new",              "makeI31New(s)"),
+    ("i31.get_s",            "makeI31Get(s, true)"),
+    ("i31.get_u",            "makeI31Get(s, false)"),
+    ("ref.test",             "makeRefTest(s)"),
+    ("ref.test_static",      "makeRefTest(s)"),
+    ("ref.cast",             "makeRefCast(s)"),
+    ("ref.cast_static",      "makeRefCast(s)"),
+    ("ref.cast_nop",         "makeRefCastNop(s)"),
+    ("ref.cast_nop_static",  "makeRefCastNop(s)"),
+    ("br_on_null",           "makeBrOnNull(s)"),
+    ("br_on_non_null",       "makeBrOnNull(s, true)"),
+    ("br_on_cast",           "makeBrOnCast(s, std::nullopt)"),
+    ("br_on_cast_static",    "makeBrOnCast(s, std::nullopt)"),
+    ("br_on_cast_fail",      "makeBrOnCast(s, std::nullopt, true)"),
+    ("br_on_cast_static_fail", "makeBrOnCast(s, std::nullopt, true)"),
+    ("br_on_func",           "makeBrOnCast(s, Type(HeapType::func, NonNullable))"),
+    ("br_on_non_func",       "makeBrOnCast(s, Type(HeapType::func, NonNullable), true)"),
+    ("br_on_i31",            "makeBrOnCast(s, Type(HeapType::i31, NonNullable))"),
+    ("br_on_non_i31",        "makeBrOnCast(s, Type(HeapType::i31, NonNullable), true)"),
+    ("struct.new",           "makeStructNew(s, false)"),
+    ("struct.new_default",   "makeStructNew(s, true)"),
+    ("struct.get",           "makeStructGet(s)"),
+    ("struct.get_s",         "makeStructGet(s, true)"),
+    ("struct.get_u",         "makeStructGet(s, false)"),
+    ("struct.set",           "makeStructSet(s)"),
+    ("array.new",            "makeArrayNew(s, false)"),
+    ("array.new_default",    "makeArrayNew(s, true)"),
+    ("array.new_data",       "makeArrayNewSeg(s, NewData)"),
+    ("array.new_elem",       "makeArrayNewSeg(s, NewElem)"),
+    ("array.init_static",    "makeArrayInitStatic(s)"),
+    ("array.get",            "makeArrayGet(s)"),
+    ("array.get_s",          "makeArrayGet(s, true)"),
+    ("array.get_u",          "makeArrayGet(s, false)"),
+    ("array.set",            "makeArraySet(s)"),
+    ("array.len",            "makeArrayLen(s)"),
+    ("array.copy",           "makeArrayCopy(s)"),
+    ("ref.is_func",          "makeRefTest(s, Type(HeapType::func, NonNullable))"),
+    ("ref.is_i31",           "makeRefTest(s, Type(HeapType::i31, NonNullable))"),
+    ("ref.as_non_null",      "makeRefAs(s, RefAsNonNull)"),
+    ("ref.as_func",          "makeRefCast(s, Type(HeapType::func, NonNullable))"),
+    ("ref.as_i31",           "makeRefCast(s, Type(HeapType::i31, NonNullable))"),
+    ("extern.internalize",   "makeRefAs(s, ExternInternalize)"),
+    ("extern.externalize",   "makeRefAs(s, ExternExternalize)"),
+    ("string.new_wtf8",      "makeStringNew(s, StringNewWTF8, false)"),
+    ("string.new_wtf16",     "makeStringNew(s, StringNewWTF16, false)"),
+    ("string.new_wtf8_array",  "makeStringNew(s, StringNewWTF8Array, false)"),
+    ("string.new_wtf16_array", "makeStringNew(s, StringNewWTF16Array, false)"),
+    ("string.from_code_point", "makeStringNew(s, StringNewFromCodePoint, false)"),
+    ("string.new_utf8_try",  "makeStringNew(s, StringNewUTF8, true)"),
+    ("string.new_utf8_array_try",  "makeStringNew(s, StringNewUTF8Array, true)"),
+    ("string.const",         "makeStringConst(s)"),
+    ("string.measure_wtf8",  "makeStringMeasure(s, StringMeasureWTF8)"),
+    ("string.measure_wtf16", "makeStringMeasure(s, StringMeasureWTF16)"),
+    ("string.is_usv_sequence", "makeStringMeasure(s, StringMeasureIsUSV)"),
+    ("string.hash",          "makeStringMeasure(s, StringMeasureHash)"),
+    ("string.encode_wtf8",   "makeStringEncode(s, StringEncodeWTF8)"),
+    ("string.encode_wtf16",  "makeStringEncode(s, StringEncodeWTF16)"),
+    ("string.encode_wtf8_array",   "makeStringEncode(s, StringEncodeWTF8Array)"),
+    ("string.encode_wtf16_array",  "makeStringEncode(s, StringEncodeWTF16Array)"),
+    ("string.concat",        "makeStringConcat(s)"),
+    ("string.eq",            "makeStringEq(s, StringEqEqual)"),
+    ("string.compare",       "makeStringEq(s, StringEqCompare)"),
+    ("string.as_wtf8",       "makeStringAs(s, StringAsWTF8)"),
+    ("string.as_wtf16",      "makeStringAs(s, StringAsWTF16)"),
+    ("string.as_iter",       "makeStringAs(s, StringAsIter)"),
+    ("stringview_wtf8.advance",       "makeStringWTF8Advance(s)"),
+    ("stringview_wtf16.get_codeunit", "makeStringWTF16Get(s)"),
+    ("stringview_iter.next",          "makeStringIterNext(s)"),
+    ("stringview_iter.advance",       "makeStringIterMove(s, StringIterMoveAdvance)"),
+    ("stringview_iter.rewind",        "makeStringIterMove(s, StringIterMoveRewind)"),
+    ("stringview_wtf8.slice",         "makeStringSliceWTF(s, StringSliceWTF8)"),
+    ("stringview_wtf16.slice",        "makeStringSliceWTF(s, StringSliceWTF16)"),
+    ("stringview_iter.slice",         "makeStringSliceIter(s)"),
+    ("stringview_wtf16.length",       "makeStringMeasure(s, StringMeasureWTF16View)"),
 ]
 
 
 class CodePrinter:
-  indents = 0
+    indents = 0
 
-  def __enter__(self):
-    CodePrinter.indents += 1
+    def __enter__(self):
+        CodePrinter.indents += 1
 
-  def __exit__(self, *args):
-    CodePrinter.indents -= 1
+    def __exit__(self, *args):
+        CodePrinter.indents -= 1
 
-  def indent(self):
-    # call in a 'with' statement
-    return self
+    def indent(self):
+        # call in a 'with' statement
+        return self
 
-  def print_line(self, line):
-    print("  " * CodePrinter.indents + line)
+    def print_line(self, line):
+        print("  " * CodePrinter.indents + line)
 
 
 class Node:
-  def __init__(self, expr=None, children=None, inst=None):
-    # the expression to return if this is the string has ended
-    self.expr = expr
-    # map unique strings to children nodes
-    self.children = children if children else {}
-    # full instruction leading to this node
-    self.inst = inst
+    def __init__(self, expr=None, children=None, inst=None):
+        # the expression to return if this is the string has ended
+        self.expr = expr
+        # map unique strings to children nodes
+        self.children = children if children else {}
+        # full instruction leading to this node
+        self.inst = inst
 
-  def _common_prefix(a, b):
-    """Return the common prefix of two strings."""
-    prefix = []
-    while a and b and a[0] == b[0]:
-      prefix.append(a[0])
-      a = a[1:]
-      b = b[1:]
-    return "".join(prefix)
+    def _common_prefix(a, b):
+        """Return the common prefix of two strings."""
+        prefix = []
+        while a and b and a[0] == b[0]:
+            prefix.append(a[0])
+            a = a[1:]
+            b = b[1:]
+        return "".join(prefix)
 
-  def do_insert(self, full_inst, inst, expr):
-    if inst is "":
-      assert self.expr is None, "Repeated instruction " + full_inst
-      self.expr = expr
-      self.inst = full_inst
-      return
-    # find key with shared prefix
-    prefix, key = "", None
-    for k in self.children:
-      prefix = Node._common_prefix(inst, k)
-      if prefix is not "":
-        key = k
-        break
-    if key is None:
-      # unique prefix, insert and stop
-      self.children[inst] = Node(expr, inst=full_inst)
-      return
-    key_remainder = key[len(prefix):]
-    if key_remainder is not "":
-      # split key and move everything after the prefix to a new node
-      child = self.children.pop(key)
-      self.children[prefix] = Node(children={key_remainder: child})
-      # update key for recursive insert
-      key = prefix
-    # chop off prefix and recurse
-    self.children[key].do_insert(full_inst, inst[len(key):], expr)
+    def do_insert(self, full_inst, inst, expr):
+        if not inst:
+            assert self.expr is None, "Repeated instruction " + full_inst
+            self.expr = expr
+            self.inst = full_inst
+            return
+        # find key with shared prefix
+        prefix, key = "", None
+        for k in self.children:
+            prefix = Node._common_prefix(inst, k)
+            if prefix:
+                key = k
+                break
+        if key is None:
+            # unique prefix, insert and stop
+            self.children[inst] = Node(expr, inst=full_inst)
+            return
+        key_remainder = key[len(prefix):]
+        if key_remainder:
+            # split key and move everything after the prefix to a new node
+            child = self.children.pop(key)
+            self.children[prefix] = Node(children={key_remainder: child})
+            # update key for recursive insert
+            key = prefix
+        # chop off prefix and recurse
+        self.children[key].do_insert(full_inst, inst[len(key):], expr)
 
-  def insert(self, inst, expr):
-    self.do_insert(inst, inst, expr)
+    def insert(self, inst, expr):
+        self.do_insert(inst, inst, expr)
 
 
-def instruction_parser():
-  """Build a trie out of all the instructions, then emit it as C++ code."""
-  trie = Node()
-  inst_length = 0
-  for inst, expr in instructions:
-    inst_length = max(inst_length, len(inst))
-    trie.insert(inst, expr)
+def instruction_parser(new_parser=False):
+    """Build a trie out of all the instructions, then emit it as C++ code."""
+    trie = Node()
+    inst_length = 0
+    for inst, expr in instructions:
+        inst_length = max(inst_length, len(inst))
+        trie.insert(inst, expr)
 
-  printer = CodePrinter()
+    printer = CodePrinter()
 
-  printer.print_line("char op[{}] = {{'\\0'}};".format(inst_length + 1))
-  printer.print_line("strncpy(op, s[0]->c_str(), {});".format(inst_length))
+    if new_parser:
+        printer.print_line("auto op = *keyword;")
+    else:
+        printer.print_line("using namespace std::string_view_literals;")
+        printer.print_line("auto op = s[0]->str().str;")
 
-  def print_leaf(expr, inst):
-    printer.print_line("if (strcmp(op, \"{inst}\") == 0) return {expr};"
-                       .format(inst=inst, expr=expr))
-    printer.print_line("goto parse_error;")
+    printer.print_line("char buf[{}] = {{}};".format(inst_length + 1))
+    printer.print_line("memcpy(buf, op.data(), op.size());")
 
-  def emit(node, idx=0):
-    assert node.children
-    printer.print_line("switch (op[{}]) {{".format(idx))
-    with printer.indent():
-      if node.expr:
-        printer.print_line("case '\\0':")
-        with printer.indent():
-          print_leaf(node.expr, node.inst)
-      children = sorted(node.children.items(), key=lambda pair: pair[0])
-      for prefix, child in children:
-        if child.children:
-          printer.print_line("case '{}': {{".format(prefix[0]))
-          with printer.indent():
-            emit(child, idx + len(prefix))
-          printer.print_line("}")
+    def print_leaf(expr, inst):
+        if new_parser:
+            expr = expr.replace("()", "(ctx, pos)")
+            expr = expr.replace("(s", "(ctx, pos")
+            printer.print_line("if (op == \"{inst}\"sv) {{".format(inst=inst))
+            with printer.indent():
+                printer.print_line("auto ret = {expr};".format(expr=expr))
+                printer.print_line("CHECK_ERR(ret);")
+                printer.print_line("return *ret;")
+            printer.print_line("}")
         else:
-          assert child.expr
-          printer.print_line("case '{}':".format(prefix[0]))
-          with printer.indent():
-            print_leaf(child.expr, child.inst)
-      printer.print_line("default: goto parse_error;")
-    printer.print_line("}")
+            printer.print_line("if (op == \"{inst}\"sv) {{ return {expr}; }}"
+                               .format(inst=inst, expr=expr))
+        printer.print_line("goto parse_error;")
 
-  emit(trie)
-  printer.print_line("parse_error:")
-  with printer.indent():
-    printer.print_line("throw ParseException(std::string(op));")
+    def emit(node, idx=0):
+        assert node.children
+        printer.print_line("switch (buf[{}]) {{".format(idx))
+        with printer.indent():
+            if node.expr:
+                printer.print_line("case '\\0':")
+                with printer.indent():
+                    print_leaf(node.expr, node.inst)
+            children = sorted(node.children.items(), key=lambda pair: pair[0])
+            for prefix, child in children:
+                if child.children:
+                    printer.print_line("case '{}': {{".format(prefix[0]))
+                    with printer.indent():
+                        emit(child, idx + len(prefix))
+                    printer.print_line("}")
+                else:
+                    assert child.expr
+                    printer.print_line("case '{}':".format(prefix[0]))
+                    with printer.indent():
+                        print_leaf(child.expr, child.inst)
+            printer.print_line("default: goto parse_error;")
+        printer.print_line("}")
+
+    emit(trie)
+    printer.print_line("parse_error:")
+    with printer.indent():
+        if new_parser:
+            printer.print_line("return ctx.in.err(pos, \"unrecognized instruction\");")
+        else:
+            printer.print_line("throw ParseException(std::string(op), s.line, s.col);")
 
 
 def print_header():
-  print("// DO NOT EDIT! This file generated by scripts/gen-s-parser.py\n")
+    print("// DO NOT EDIT! This file generated by scripts/gen-s-parser.py\n")
+    print("// clang-format off\n")
+
+
+def print_footer():
+    print("\n// clang-format on")
 
 
 def generate_with_guard(generator, guard):
-  print("#ifdef {}".format(guard))
-  print("#undef {}".format(guard))
-  generator()
-  print("#endif // {}".format(guard))
+    print("#ifdef {}".format(guard))
+    print("#undef {}".format(guard))
+    generator()
+    print("#endif // {}".format(guard))
 
 
 def main():
-  if sys.version_info.major != 3:
-    import datetime
-    print("It's " + str(datetime.datetime.now().year) + "! Use Python 3!")
-    sys.exit(1)
-  print_header()
-  generate_with_guard(instruction_parser, "INSTRUCTION_PARSER")
+    if sys.version_info.major != 3:
+        import datetime
+        print("It's " + str(datetime.datetime.now().year) + "! Use Python 3!")
+        sys.exit(1)
+    print_header()
+    generate_with_guard(instruction_parser, "INSTRUCTION_PARSER")
+    print()
+    generate_with_guard(lambda: instruction_parser(True), "NEW_INSTRUCTION_PARSER")
+    print_footer()
 
 
 if __name__ == "__main__":
-  main()
+    main()

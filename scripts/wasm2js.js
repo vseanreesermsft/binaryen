@@ -6,12 +6,6 @@ var WebAssembly = {
   Memory: function(opts) {
     return {
       buffer: new ArrayBuffer(opts['initial'] * 64 * 1024),
-      grow: function(amount) {
-        var oldBuffer = this.buffer;
-        var ret = __growWasmMemory(amount);
-        assert(this.buffer !== oldBuffer); // the call should have updated us
-        return ret;
-      }
     };
   },
 
@@ -70,9 +64,9 @@ var WebAssembly = {
     };
     var atob = decodeBase64;
     // Additional imports
-    asmLibraryArg['__tempMemory__'] = 0; // risky!
+    info['env']['__tempMemory__'] = 0; // risky!
     // This will be replaced by the actual wasm2js code.
-    var exports = instantiate(asmLibraryArg, wasmMemory, wasmTable);
+    var exports = instantiate(info, wasmMemory);
     return {
       'exports': exports
     };
@@ -91,7 +85,7 @@ var WebAssembly = {
 
 var tempRet0 = 0;
 
-var asmLibraryArg = {
+var env = {
   log_i32: function(x) {
     console.log('[LoggingExternalInterface logging ' + literal(x, 'i32') + ']');
   },
@@ -119,7 +113,7 @@ var asmLibraryArg = {
   },
   get_i64: function(loc, index, low, high) {
     console.log('get_i64 ' + [loc, index, low, high]);
-    asmLibraryArg['setTempRet0'](high);
+    env['setTempRet0'](high);
     return low;
   },
   get_f32: function(loc, index, value) {
@@ -136,7 +130,7 @@ var asmLibraryArg = {
   },
   set_i64: function(loc, index, low, high) {
     console.log('set_i64 ' + [loc, index, low, high]);
-    asmLibraryArg['setTempRet0'](high);
+    env['setTempRet0'](high);
     return low;
   },
   set_f32: function(loc, index, value) {
@@ -157,11 +151,11 @@ var asmLibraryArg = {
   },
   load_val_i64: function(loc, low, high) {
     console.log('load_val_i64 ' + [loc, low, high]);
-    asmLibraryArg['setTempRet0'](high);
+    env['setTempRet0'](high);
     return low;
   },
   load_val_f32: function(loc, value) {
-    console.log('loaload_val_i32d_ptr ' + [loc, value]);
+    console.log('load_val_f32 ' + [loc, value]);
     return value;
   },
   load_val_f64: function(loc, value) {
@@ -178,19 +172,91 @@ var asmLibraryArg = {
   },
   store_val_i64: function(loc, low, high) {
     console.log('store_val_i64 ' + [loc, low, high]);
-    asmLibraryArg['setTempRet0'](high);
+    env['setTempRet0'](high);
     return low;
   },
   store_val_f32: function(loc, value) {
-    console.log('loastore_val_i32d_ptr ' + [loc, value]);
+    console.log('store_val_f32 ' + [loc, value]);
     return value;
   },
   store_val_f64: function(loc, value) {
     console.log('store_val_f64 ' + [loc, value]);
     return value;
   },
+
+  struct_get_val_i32: function(loc, value) {
+    console.log('struct_get_val_i32 ' + [loc, value]);
+    return value;
+  },
+  struct_get_val_i64: function(loc, value) {
+    console.log('struct_get_val_i64 ' + [loc, value]);
+    return value;
+  },
+  struct_get_val_f32: function(loc, value) {
+    console.log('struct_get_val_f32 ' + [loc, value]);
+    return value;
+  },
+  struct_get_val_f64: function(loc, value) {
+    console.log('struct_get_val_f64 ' + [loc, value]);
+    return value;
+  },
+  struct_set_val_i32: function(loc, value) {
+    console.log('struct_set_val_i32 ' + [loc, value]);
+    return value;
+  },
+  struct_set_val_i64: function(loc, value) {
+    console.log('struct_set_val_i64 ' + [loc, value]);
+    return value;
+  },
+  struct_set_val_f32: function(loc, value) {
+    console.log('struct_set_val_f32 ' + [loc, value]);
+    return value;
+  },
+  struct_set_val_f64: function(loc, value) {
+    console.log('struct_set_val_f64 ' + [loc, value]);
+    return value;
+  },
+
+  array_get_val_i32: function(loc, value) {
+    console.log('array_get_val_i32 ' + [loc, value]);
+    return value;
+  },
+  array_get_val_i64: function(loc, value) {
+    console.log('array_get_val_i64 ' + [loc, value]);
+    return value;
+  },
+  array_get_val_f32: function(loc, value) {
+    console.log('array_get_val_f32 ' + [loc, value]);
+    return value;
+  },
+  array_get_val_f64: function(loc, value) {
+    console.log('array_get_val_f64 ' + [loc, value]);
+    return value;
+  },
+  array_set_val_i32: function(loc, value) {
+    console.log('array_set_val_i32 ' + [loc, value]);
+    return value;
+  },
+  array_set_val_i64: function(loc, value) {
+    console.log('array_set_val_i64 ' + [loc, value]);
+    return value;
+  },
+  array_set_val_f32: function(loc, value) {
+    console.log('array_set_val_f32 ' + [loc, value]);
+    return value;
+  },
+  array_set_val_f64: function(loc, value) {
+    console.log('array_set_val_f64 ' + [loc, value]);
+    return value;
+  },
+  array_get_index: function(loc, value) {
+    console.log('array_get_index ' + [loc, value]);
+    return value;
+  },
+  array_set_index: function(loc, value) {
+    console.log('array_set_index ' + [loc, value]);
+    return value;
+  },
 };
 
 var wasmMemory = new WebAssembly.Memory({ initial: 1 });
-var wasmTable = new WebAssembly.Table({ initial: 1 });
-

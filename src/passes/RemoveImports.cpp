@@ -22,41 +22,44 @@
 // look at all the rest of the code).
 //
 
-#include "wasm.h"
-#include "pass.h"
+#include "ir/element-utils.h"
 #include "ir/module-utils.h"
+#include "pass.h"
+#include "wasm.h"
 
 namespace wasm {
 
 struct RemoveImports : public WalkerPass<PostWalker<RemoveImports>> {
-  void visitCall(Call *curr) {
+  void visitCall(Call* curr) {
     auto* func = getModule()->getFunction(curr->target);
     if (!func->imported()) {
       return;
     }
-    Type type = getModule()->getFunctionType(func->type)->result;
-    if (type == none) {
+    Type type = func->getResults();
+    if (type == Type::none) {
       replaceCurrent(getModule()->allocator.alloc<Nop>());
     } else {
-      Literal nopLiteral;
-      nopLiteral.type = type;
+      Literal nopLiteral(type);
       replaceCurrent(getModule()->allocator.alloc<Const>()->set(nopLiteral));
     }
   }
 
-  void visitModule(Module *curr) {
+  void visitModule(Module* curr) {
     std::vector<Name> names;
-    ModuleUtils::iterImportedFunctions(*curr, [&](Function* func) {
-      names.push_back(func->name);
-    });
+    ModuleUtils::iterImportedFunctions(
+      *curr, [&](Function* func) { names.push_back(func->name); });
+    // Do not remove names referenced in a table
+    std::set<Name> indirectNames;
+    ElementUtils::iterAllElementFunctionNames(
+      curr, [&](Name& name) { indirectNames.insert(name); });
     for (auto& name : names) {
-      curr->removeFunction(name);
+      if (indirectNames.find(name) == indirectNames.end()) {
+        curr->removeFunction(name);
+      }
     }
   }
 };
 
-Pass *createRemoveImportsPass() {
-  return new RemoveImports();
-}
+Pass* createRemoveImportsPass() { return new RemoveImports(); }
 
 } // namespace wasm

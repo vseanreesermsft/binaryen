@@ -17,94 +17,89 @@
 #ifndef wasm_asmjs_shared_constants_h
 #define wasm_asmjs_shared_constants_h
 
-#include "emscripten-optimizer/istring.h"
+#include "support/istring.h"
 
 namespace wasm {
 
-extern cashew::IString GLOBAL,
-                NAN_,
-                INFINITY_,
-                NAN__,
-                INFINITY__,
-                TOPMOST,
-                INT8ARRAY,
-                INT16ARRAY,
-                INT32ARRAY,
-                UINT8ARRAY,
-                UINT16ARRAY,
-                UINT32ARRAY,
-                FLOAT32ARRAY,
-                FLOAT64ARRAY,
-                ARRAY_BUFFER,
-                ASM_MODULE,
-                IMPOSSIBLE_CONTINUE,
-                MATH,
-                IMUL,
-                CLZ32,
-                FROUND,
-                ASM2WASM,
-                MIN,
-                MAX,
-                F64_REM,
-                F64_TO_INT,
-                F64_TO_UINT,
-                F64_TO_INT64,
-                F64_TO_UINT64,
-                F32_TO_INT,
-                F32_TO_UINT,
-                F32_TO_INT64,
-                F32_TO_UINT64,
-                I32S_DIV,
-                I32U_DIV,
-                I32S_REM,
-                I32U_REM,
-                GLOBAL_MATH,
-                ABS,
-                FLOOR,
-                CEIL,
-                SQRT,
-                POW,
-                I32_TEMP,
-                DEBUGGER,
-                USE_ASM,
-                ALMOST_ASM,
-                BUFFER,
-                ENV,
-                STACKTOP,
-                STACK_MAX,
-                INSTRUMENT,
-                MATH_IMUL,
-                MATH_ABS,
-                MATH_CEIL,
-                MATH_CLZ32,
-                MATH_FLOOR,
-                MATH_TRUNC,
-                MATH_SQRT,
-                MATH_MIN,
-                MATH_MAX,
-                WASM_CTZ32,
-                WASM_CTZ64,
-                WASM_CLZ32,
-                WASM_CLZ64,
-                WASM_POPCNT32,
-                WASM_POPCNT64,
-                WASM_ROTL32,
-                WASM_ROTL64,
-                WASM_ROTR32,
-                WASM_ROTR64,
-                WASM_GROW_MEMORY,
-                WASM_CURRENT_MEMORY,
-                WASM_FETCH_HIGH_BITS,
-                INT64_TO_32_HIGH_BITS,
-                WASM_NEAREST_F32,
-                WASM_NEAREST_F64,
-                WASM_TRUNC_F32,
-                WASM_TRUNC_F64,
-                WASM_I64_MUL,
-                WASM_I64_SDIV,
-                WASM_I64_UDIV,
-                WASM_I64_SREM,
-                WASM_I64_UREM;
-}
+extern IString TOPMOST;
+extern IString INT8ARRAY;
+extern IString INT16ARRAY;
+extern IString INT32ARRAY;
+extern IString UINT8ARRAY;
+extern IString UINT16ARRAY;
+extern IString UINT32ARRAY;
+extern IString FLOAT32ARRAY;
+extern IString FLOAT64ARRAY;
+extern IString ARRAY_BUFFER;
+extern IString ASM_MODULE;
+extern IString MATH;
+extern IString IMUL;
+extern IString CLZ32;
+extern IString FROUND;
+extern IString ASM2WASM;
+extern IString MIN;
+extern IString MAX;
+extern IString F64_REM;
+extern IString F64_TO_INT;
+extern IString F64_TO_UINT;
+extern IString F64_TO_INT64;
+extern IString F64_TO_UINT64;
+extern IString F32_TO_INT;
+extern IString F32_TO_UINT;
+extern IString F32_TO_INT64;
+extern IString F32_TO_UINT64;
+extern IString I32S_DIV;
+extern IString I32U_DIV;
+extern IString I32S_REM;
+extern IString I32U_REM;
+extern IString ABS;
+extern IString FLOOR;
+extern IString CEIL;
+extern IString TRUNC;
+extern IString SQRT;
+extern IString POW;
+extern IString I32_TEMP;
+extern IString DEBUGGER;
+extern IString BUFFER;
+extern IString ENV;
+extern IString STACKTOP;
+extern IString STACK_MAX;
+extern IString INSTRUMENT;
+extern IString MATH_IMUL;
+extern IString MATH_ABS;
+extern IString MATH_CLZ32;
+extern IString MATH_CEIL;
+extern IString MATH_FLOOR;
+extern IString MATH_TRUNC;
+extern IString MATH_SQRT;
+extern IString MATH_MIN;
+extern IString MATH_MAX;
+extern IString WASM_CTZ32;
+extern IString WASM_CTZ64;
+extern IString WASM_CLZ32;
+extern IString WASM_CLZ64;
+extern IString WASM_POPCNT32;
+extern IString WASM_POPCNT64;
+extern IString WASM_ROTL32;
+extern IString WASM_ROTL64;
+extern IString WASM_ROTR32;
+extern IString WASM_ROTR64;
+extern IString WASM_MEMORY_GROW;
+extern IString WASM_MEMORY_SIZE;
+extern IString WASM_FETCH_HIGH_BITS;
+extern IString INT64_TO_32_HIGH_BITS;
+extern IString WASM_NEAREST_F32;
+extern IString WASM_NEAREST_F64;
+extern IString WASM_I64_MUL;
+extern IString WASM_I64_SDIV;
+extern IString WASM_I64_UDIV;
+extern IString WASM_I64_SREM;
+extern IString WASM_I64_UREM;
+// wasm2js constants
+extern IString ASM_FUNC;
+extern IString FUNCTION_TABLE;
+extern IString NO_RESULT;
+extern IString EXPRESSION_RESULT;
+} // namespace wasm
 
 #endif // wasm_asmjs_shared_constants_h

@@ -19,13 +19,16 @@
 namespace wasm {
 
 struct StripTargetFeatures : public Pass {
-  void run(PassRunner* runner, Module* module) override {
-    module->hasFeaturesSection = false;
+  bool requiresNonNullableLocalFixups() override { return false; }
+
+  bool isStripped = false;
+  StripTargetFeatures(bool isStripped) : isStripped(isStripped) {}
+  void run(Module* module) override {
+    module->hasFeaturesSection = !isStripped;
   }
 };
 
-Pass *createStripTargetFeaturesPass() {
-  return new StripTargetFeatures();
-}
+Pass* createStripTargetFeaturesPass() { return new StripTargetFeatures(true); }
+Pass* createEmitTargetFeaturesPass() { return new StripTargetFeatures(false); }
 
 } // namespace wasm

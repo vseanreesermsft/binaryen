@@ -30,12 +30,11 @@
 //       <= 1 byte to declare the local and 2-3 to use it!
 //
 
-#include <map>
-
-#include <wasm.h>
-#include <pass.h>
-#include <wasm-binary.h>
-#include <wasm-builder.h>
+#include "pass.h"
+#include "support/insert_ordered.h"
+#include "wasm-binary.h"
+#include "wasm-builder.h"
+#include "wasm.h"
 
 namespace wasm {
 
@@ -45,9 +44,11 @@ static const Index MIN_USES = 2;
 struct ConstHoisting : public WalkerPass<PostWalker<ConstHoisting>> {
   bool isFunctionParallel() override { return true; }
 
-  Pass* create() override { return new ConstHoisting; }
+  std::unique_ptr<Pass> create() override {
+    return std::make_unique<ConstHoisting>();
+  }
 
-  std::map<Literal, std::vector<Expression**>> uses;
+  InsertOrderedMap<Literal, std::vector<Expression**>> uses;
 
   void visitConst(Const* curr) {
     uses[curr->value].push_back(getCurrentPointer());
@@ -55,9 +56,7 @@ struct ConstHoisting : public WalkerPass<PostWalker<ConstHoisting>> {
 
   void visitFunction(Function* curr) {
     std::vector<Expression*> prelude;
-    for (auto& pair : uses) {
-      auto value = pair.first;
-      auto& vec = pair.second;
+    for (auto& [value, vec] : uses) {
       auto num = vec.size();
       if (worthHoisting(value, num)) {
         prelude.push_back(hoist(vec));
@@ -66,40 +65,38 @@ struct ConstHoisting : public WalkerPass<PostWalker<ConstHoisting>> {
     if (!prelude.empty()) {
       Builder builder(*getModule());
       // merge-blocks can optimize this into a single block later in most cases
-      curr->body = builder.makeSequence(
-        builder.makeBlock(prelude),
-        curr->body
-      );
+      curr->body = builder.makeSequence(builder.makeBlock(prelude), curr->body);
     }
   }
 
 private:
   bool worthHoisting(Literal value, Index num) {
-    if (num < MIN_USES) return false;
+    if (num < MIN_USES) {
+      return false;
+    }
     // measure the size of the constant
     Index size = 0;
-    switch (value.type) {
-      case i32: {
+    TODO_SINGLE_COMPOUND(value.type);
+    switch (value.type.getBasic()) {
+      case Type::i32: {
         size = getWrittenSize(S32LEB(value.geti32()));
         break;
       }
-      case i64: {
+      case Type::i64: {
         size = getWrittenSize(S64LEB(value.geti64()));
         break;
       }
-      case f32:
-      case f64: {
-        size = getTypeSize(value.type);
+      case Type::f32:
+      case Type::f64: {
+        size = value.type.getByteSize();
         break;
       }
-      case v128: {
-        // v128 not implemented yet
+      // not implemented yet
+      case Type::v128:
         return false;
-      }
-      case none:
-      case unreachable: {
-        WASM_UNREACHABLE();
-      }
+      case Type::none:
+      case Type::unreachable:
+        WASM_UNREACHABLE("unexpected type");
     }
     // compute the benefit, of replacing the uses with
     // one use + a set and then a get for each use
@@ -112,8 +109,7 @@ private:
     return after < before;
   }
 
-  template<typename T>
-  Index getWrittenSize(const T& thing) {
+  template<typename T> Index getWrittenSize(const T& thing) {
     BufferWithRandomAccess buffer;
     buffer << thing;
     return buffer.size();
@@ -125,19 +121,14 @@ private:
     auto type = (*(vec[0]))->type;
     Builder builder(*getModule());
     auto temp = builder.addVar(getFunction(), type);
-    auto* ret = builder.makeSetLocal(
-      temp,
-      *(vec[0])
-    );
+    auto* ret = builder.makeLocalSet(temp, *(vec[0]));
     for (auto item : vec) {
-      *item = builder.makeGetLocal(temp, type);
+      *item = builder.makeLocalGet(temp, type);
     }
     return ret;
   }
 };
 
-Pass *createConstHoistingPass() {
-  return new ConstHoisting();
-}
+Pass* createConstHoistingPass() { return new ConstHoisting(); }
 
 } // namespace wasm

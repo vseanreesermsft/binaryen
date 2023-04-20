@@ -29,6 +29,9 @@ struct ImportInfo {
 
   std::vector<Global*> importedGlobals;
   std::vector<Function*> importedFunctions;
+  std::vector<Table*> importedTables;
+  std::vector<Memory*> importedMemories;
+  std::vector<Tag*> importedTags;
 
   ImportInfo(Module& wasm) : wasm(wasm) {
     for (auto& import : wasm.globals) {
@@ -39,6 +42,21 @@ struct ImportInfo {
     for (auto& import : wasm.functions) {
       if (import->imported()) {
         importedFunctions.push_back(import.get());
+      }
+    }
+    for (auto& import : wasm.tables) {
+      if (import->imported()) {
+        importedTables.push_back(import.get());
+      }
+    }
+    for (auto& import : wasm.memories) {
+      if (import->imported()) {
+        importedMemories.push_back(import.get());
+      }
+    }
+    for (auto& import : wasm.tags) {
+      if (import->imported()) {
+        importedTags.push_back(import.get());
       }
     }
   }
@@ -61,18 +79,29 @@ struct ImportInfo {
     return nullptr;
   }
 
-  Index getNumImportedGlobals() {
-    return importedGlobals.size();
+  Tag* getImportedTag(Name module, Name base) {
+    for (auto* import : importedTags) {
+      if (import->module == module && import->base == base) {
+        return import;
+      }
+    }
+    return nullptr;
   }
 
-  Index getNumImportedFunctions() {
-    return importedFunctions.size();
-  }
+  Index getNumImportedGlobals() { return importedGlobals.size(); }
+
+  Index getNumImportedFunctions() { return importedFunctions.size(); }
+
+  Index getNumImportedTables() { return importedTables.size(); }
+
+  Index getNumImportedMemories() { return importedMemories.size(); }
+
+  Index getNumImportedTags() { return importedTags.size(); }
 
   Index getNumImports() {
     return getNumImportedGlobals() + getNumImportedFunctions() +
-           (wasm.memory.imported() ? 1 : 0) +
-           (wasm.table.imported() ? 1 : 0);
+           getNumImportedTags() + getNumImportedMemories() +
+           getNumImportedTables();
   }
 
   Index getNumDefinedGlobals() {
@@ -82,9 +111,18 @@ struct ImportInfo {
   Index getNumDefinedFunctions() {
     return wasm.functions.size() - getNumImportedFunctions();
   }
+
+  Index getNumDefinedTables() {
+    return wasm.tables.size() - getNumImportedTables();
+  }
+
+  Index getNumDefinedMemories() {
+    return wasm.memories.size() - getNumImportedMemories();
+  }
+
+  Index getNumDefinedTags() { return wasm.tags.size() - getNumImportedTags(); }
 };
 
 } // namespace wasm
 
 #endif // wasm_ir_import_h
-

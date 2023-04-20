@@ -1,6 +1,4 @@
-var module = new Binaryen.Module();
-
-var signature = module.addFunctionType("i", Binaryen.i32, []);
+var module = new binaryen.Module();
 
 var fileIndex = module.addDebugInfoFileName("module.c");
 
@@ -10,14 +8,15 @@ console.log();
 var expr = module.i32.const(1);
 var body = module.block("", [
   expr
-], Binaryen.i32);
+], binaryen.i32);
 
-var func = module.addFunction("main", signature, [], body);
+var func = module.addFunction("main", binaryen.none, binaryen.i32, [], body);
 
 module.setDebugLocation(func, expr, fileIndex, 1, 2);
 module.setDebugLocation(func, body, fileIndex, 0, 3);
 
 var output = module.emitBinary("module.wasm.map");
+assert(module.validate());
 
 function dumpBinary(buffer) {
   var hex = [], o, b, h;

@@ -35,15 +35,15 @@
 //    directly, without the need for *-propagate techniques.
 //
 
-#include "wasm.h"
-#include "pass.h"
-#include "wasm-builder.h"
+#include "dataflow/graph.h"
+#include "dataflow/node.h"
+#include "dataflow/utils.h"
 #include "ir/flat.h"
 #include "ir/local-graph.h"
 #include "ir/utils.h"
-#include "dataflow/node.h"
-#include "dataflow/graph.h"
-#include "dataflow/utils.h"
+#include "pass.h"
+#include "wasm-builder.h"
+#include "wasm.h"
 
 namespace wasm {
 
@@ -62,7 +62,8 @@ struct UseFinder {
   // (or rather, their values) that contain a get that uses that value.
   // There may also be non-set uses of the value, for example in a drop
   // or a return. We represent those with a nullptr, meaning "other".
-  std::vector<Expression*> getUses(Expression* origin, Graph& graph, LocalGraph& localGraph) {
+  std::vector<Expression*>
+  getUses(Expression* origin, Graph& graph, LocalGraph& localGraph) {
     if (debug() >= 2) {
       std::cout << "getUses\n" << origin << '\n';
     }
@@ -78,12 +79,16 @@ struct UseFinder {
   }
 
   // There may be loops of sets with copies between them.
-  std::unordered_set<SetLocal*> seenSets;
+  std::unordered_set<LocalSet*> seenSets;
 
-  void addSetUses(SetLocal* set, Graph& graph, LocalGraph& localGraph, std::vector<Expression*>& ret) {
+  void addSetUses(LocalSet* set,
+                  Graph& graph,
+                  LocalGraph& localGraph,
+                  std::vector<Expression*>& ret) {
     // If already handled, nothing to do here.
-    if (seenSets.count(set)) return;
-    seenSets.insert(set);
+    if (!seenSets.emplace(set).second) {
+      return;
+    }
     // Find all the uses of that set.
     auto& gets = localGraph.setInfluences[set];
     if (debug() >= 2) {
@@ -165,7 +170,12 @@ struct Trace {
   // The local information graph. Used to check if a node has external uses.
   LocalGraph& localGraph;
 
-  Trace(Graph& graph, Node* toInfer, std::unordered_set<Node*>& excludeAsChildren, LocalGraph& localGraph) : graph(graph), toInfer(toInfer), excludeAsChildren(excludeAsChildren), localGraph(localGraph) {
+  Trace(Graph& graph,
+        Node* toInfer,
+        std::unordered_set<Node*>& excludeAsChildren,
+        LocalGraph& localGraph)
+    : graph(graph), toInfer(toInfer), excludeAsChildren(excludeAsChildren),
+      localGraph(localGraph) {
     if (debug() >= 2) {
       std::cout << "\nstart a trace (in " << graph.func->name << ")\n";
     }
@@ -180,7 +190,9 @@ struct Trace {
     }
     // Pull in all the dependencies, starting from the value itself.
     add(toInfer, 0);
-    if (bad) return;
+    if (bad) {
+      return;
+    }
     // If we are trivial before adding pcs, we are still trivial, and
     // can ignore this.
     auto sizeBeforePathConditions = nodes.size();
@@ -238,16 +250,17 @@ struct Trace {
         // If we've gone too deep, emit a var instead.
         // Do the same if this is a node we should exclude from traces.
         if (depth >= depthLimit || nodes.size() >= totalLimit ||
-            (node != toInfer && excludeAsChildren.find(node) != excludeAsChildren.end())) {
+            (node != toInfer &&
+             excludeAsChildren.find(node) != excludeAsChildren.end())) {
           auto type = node->getWasmType();
-          assert(isConcreteType(type));
+          assert(type.isConcrete());
           auto* var = Node::makeVar(type);
           replacements[node] = std::unique_ptr<Node>(var);
           node = var;
           break;
         }
         // Add the dependencies.
-        assert(!node->expr->is<GetLocal>());
+        assert(!node->expr->is<LocalGet>());
         for (Index i = 0; i < node->values.size(); i++) {
           add(node->getValue(i), depth);
         }
@@ -293,7 +306,8 @@ struct Trace {
         bad = true;
         return nullptr;
       }
-      default: WASM_UNREACHABLE();
+      default:
+        WASM_UNREACHABLE("unexpected node type");
     }
     // Assert on no cycles
     assert(addedNodes.find(node) == addedNodes.end());
@@ -319,7 +333,9 @@ struct Trace {
 
   // curr is a child of parent, and parent has a Block which we are
   // give as 'node'. Add a path condition for reaching the child.
-  void addPathTo(Expression* parent, Expression* curr, std::vector<Node*> conditions) {
+  void addPathTo(Expression* parent,
+                 Expression* curr,
+                 std::vector<Node*> conditions) {
     if (auto* iff = parent->dynCast<If>()) {
       Index index;
       if (curr == iff->ifTrue) {
@@ -327,7 +343,7 @@ struct Trace {
       } else if (curr == iff->ifFalse) {
         index = 1;
       } else {
-        WASM_UNREACHABLE();
+        WASM_UNREACHABLE("invalid expr");
       }
       auto* condition = conditions[index];
       // Add the condition itself as an instruction in the trace -
@@ -336,13 +352,11 @@ struct Trace {
       // Add it as a pc, which we will emit directly.
       pathConditions.push_back(condition);
     } else {
-      WASM_UNREACHABLE();
+      WASM_UNREACHABLE("invalid expr");
     }
   }
 
-  bool isBad() {
-    return bad;
-  }
+  bool isBad() { return bad; }
 
   static bool isTraceable(Node* node) {
     if (!node->origin) {
@@ -372,7 +386,9 @@ struct Trace {
       }
     }
     for (auto& node : nodes) {
-      if (node == toInfer) continue;
+      if (node == toInfer) {
+        continue;
+      }
       if (auto* origin = node->origin) {
         auto uses = UseFinder().getUses(origin, graph, localGraph);
         for (auto* use : uses) {
@@ -407,7 +423,8 @@ struct Printer {
     std::cout << "\n; start LHS (in " << graph.func->name << ")\n";
     // Index the nodes.
     for (auto* node : trace.nodes) {
-      if (!node->isCond()) { // pcs and blockpcs are not instructions and do not need to be indexed
+      // pcs and blockpcs are not instructions and do not need to be indexed
+      if (!node->isCond()) {
         auto index = indexing.size();
         indexing[node] = index;
       }
@@ -440,14 +457,13 @@ struct Printer {
     assert(node);
     switch (node->type) {
       case Node::Type::Var: {
-        std::cout << "%" << indexing[node] << ":" << printType(node->wasmType) << " = var";
+        std::cout << "%" << indexing[node] << ":" << node->wasmType << " = var";
         break; // nothing more to add
       }
       case Node::Type::Expr: {
         if (debug()) {
           std::cout << "; ";
-          WasmPrinter::printExpression(node->expr, std::cout, true);
-          std::cout << '\n';
+          std::cout << *node->expr << '\n';
         }
         std::cout << "%" << indexing[node] << " = ";
         printExpression(node);
@@ -464,30 +480,33 @@ struct Printer {
         break;
       }
       case Node::Type::Cond: {
-        std::cout << "blockpc %" << indexing[node->getValue(0)] << ' ' << node->index << ' ';
+        std::cout << "blockpc %" << indexing[node->getValue(0)] << ' '
+                  << node->index << ' ';
         printInternal(node->getValue(1));
         std::cout << " 1:i1";
         break;
       }
       case Node::Type::Block: {
-        std::cout << "%" << indexing[node] << " = block " << node->values.size();
+        std::cout << "%" << indexing[node] << " = block "
+                  << node->values.size();
         break;
       }
       case Node::Type::Zext: {
         auto* child = node->getValue(0);
-        std::cout << "%" << indexing[node] << ':' << printType(child->getWasmType());
+        std::cout << "%" << indexing[node] << ':' << child->getWasmType();
         std::cout << " = zext ";
         printInternal(child);
         break;
       }
       case Node::Type::Bad: {
-        std::cout << "!!!BAD!!!";
-        WASM_UNREACHABLE();
+        WASM_UNREACHABLE("!!!BAD!!!");
       }
-      default: WASM_UNREACHABLE();
+      default:
+        WASM_UNREACHABLE("unexpted type");
     }
     if (node->isExpr() || node->isPhi()) {
-      if (node->origin != trace.toInfer->origin && trace.hasExternalUses.count(node) > 0) {
+      if (node->origin != trace.toInfer->origin &&
+          trace.hasExternalUses.count(node) > 0) {
         std::cout << " (hasExternalUses)";
         printedHasExternalUses = true;
       }
@@ -499,7 +518,7 @@ struct Printer {
   }
 
   void print(Literal value) {
-    std::cout << value.getInteger() << ':' << printType(value.type);
+    std::cout << value.getInteger() << ':' << value.type;
   }
 
   void printInternal(Node* node) {
@@ -523,12 +542,19 @@ struct Printer {
     } else if (auto* unary = curr->dynCast<Unary>()) {
       switch (unary->op) {
         case ClzInt32:
-        case ClzInt64:    std::cout << "ctlz";  break;
+        case ClzInt64:
+          std::cout << "ctlz";
+          break;
         case CtzInt32:
-        case CtzInt64:    std::cout << "cttz";  break;
+        case CtzInt64:
+          std::cout << "cttz";
+          break;
         case PopcntInt32:
-        case PopcntInt64: std::cout << "ctpop"; break;
-        default: WASM_UNREACHABLE();
+        case PopcntInt64:
+          std::cout << "ctpop";
+          break;
+        default:
+          WASM_UNREACHABLE("invalid op");
       }
       std::cout << ' ';
       auto* value = node->getValue(0);
@@ -536,48 +562,91 @@ struct Printer {
     } else if (auto* binary = curr->dynCast<Binary>()) {
       switch (binary->op) {
         case AddInt32:
-        case AddInt64:  std::cout << "add";  break;
+        case AddInt64:
+          std::cout << "add";
+          break;
         case SubInt32:
-        case SubInt64:  std::cout << "sub";  break;
+        case SubInt64:
+          std::cout << "sub";
+          break;
         case MulInt32:
-        case MulInt64:  std::cout << "mul";  break;
+        case MulInt64:
+          std::cout << "mul";
+          break;
         case DivSInt32:
-        case DivSInt64: std::cout << "sdiv"; break;
+        case DivSInt64:
+          std::cout << "sdiv";
+          break;
         case DivUInt32:
-        case DivUInt64: std::cout << "udiv"; break;
+        case DivUInt64:
+          std::cout << "udiv";
+          break;
         case RemSInt32:
-        case RemSInt64: std::cout << "srem"; break;
+        case RemSInt64:
+          std::cout << "srem";
+          break;
         case RemUInt32:
-        case RemUInt64: std::cout << "urem"; break;
+        case RemUInt64:
+          std::cout << "urem";
+          break;
         case AndInt32:
-        case AndInt64:  std::cout << "and";  break;
+        case AndInt64:
+          std::cout << "and";
+          break;
         case OrInt32:
-        case OrInt64:   std::cout << "or";   break;
+        case OrInt64:
+          std::cout << "or";
+          break;
         case XorInt32:
-        case XorInt64:  std::cout << "xor";  break;
+        case XorInt64:
+          std::cout << "xor";
+          break;
         case ShlInt32:
-        case ShlInt64:  std::cout << "shl";  break;
+        case ShlInt64:
+          std::cout << "shl";
+          break;
         case ShrUInt32:
-        case ShrUInt64: std::cout << "lshr"; break;
+        case ShrUInt64:
+          std::cout << "lshr";
+          break;
         case ShrSInt32:
-        case ShrSInt64: std::cout << "ashr"; break;
+        case ShrSInt64:
+          std::cout << "ashr";
+          break;
         case RotLInt32:
-        case RotLInt64: std::cout << "rotl"; break;
+        case RotLInt64:
+          std::cout << "rotl";
+          break;
         case RotRInt32:
-        case RotRInt64: std::cout << "rotr"; break;
+        case RotRInt64:
+          std::cout << "rotr";
+          break;
         case EqInt32:
-        case EqInt64:   std::cout << "eq";   break;
+        case EqInt64:
+          std::cout << "eq";
+          break;
         case NeInt32:
-        case NeInt64:   std::cout << "ne";   break;
+        case NeInt64:
+          std::cout << "ne";
+          break;
         case LtSInt32:
-        case LtSInt64:  std::cout << "slt";  break;
+        case LtSInt64:
+          std::cout << "slt";
+          break;
         case LtUInt32:
-        case LtUInt64:  std::cout << "ult";  break;
+        case LtUInt64:
+          std::cout << "ult";
+          break;
         case LeSInt32:
-        case LeSInt64:  std::cout << "sle";  break;
+        case LeSInt64:
+          std::cout << "sle";
+          break;
         case LeUInt32:
-        case LeUInt64:  std::cout << "ule";  break;
-        default: WASM_UNREACHABLE();
+        case LeUInt64:
+          std::cout << "ule";
+          break;
+        default:
+          WASM_UNREACHABLE("invalid op");
       }
       std::cout << ' ';
       auto* left = node->getValue(0);
@@ -593,7 +662,7 @@ struct Printer {
       std::cout << ", ";
       printInternal(node->getValue(2));
     } else {
-      WASM_UNREACHABLE();
+      WASM_UNREACHABLE("unexecpted node type");
     }
   }
 
@@ -616,11 +685,13 @@ struct Printer {
       }
     }
     if (allInputsIdentical(node)) {
-      std::cout << "^^ suspicious identical inputs! missing optimization in " << graph.func->name << "? ^^\n";
+      std::cout << "^^ suspicious identical inputs! missing optimization in "
+                << graph.func->name << "? ^^\n";
       return;
     }
     if (!node->isPhi() && allInputsConstant(node)) {
-      std::cout << "^^ suspicious constant inputs! missing optimization in " << graph.func->name << "? ^^\n";
+      std::cout << "^^ suspicious constant inputs! missing optimization in "
+                << graph.func->name << "? ^^\n";
       return;
     }
   }
@@ -642,7 +713,9 @@ struct Souperify : public WalkerPass<PostWalker<Souperify>> {
     // Build the data-flow IR.
     DataFlow::Graph graph;
     graph.build(func, getModule());
-    if (debug() >= 2) dump(graph, std::cout);
+    if (debug() >= 2) {
+      dump(graph, std::cout);
+    }
     // Build the local graph data structure.
     LocalGraph localGraph(func);
     localGraph.computeInfluences();
@@ -653,7 +726,8 @@ struct Souperify : public WalkerPass<PostWalker<Souperify>> {
         auto* node = nodePtr.get();
         if (node->origin) {
           // TODO: work for identical origins could be saved
-          auto uses = DataFlow::UseFinder().getUses(node->origin, graph, localGraph);
+          auto uses =
+            DataFlow::UseFinder().getUses(node->origin, graph, localGraph);
           if (debug() >= 2) {
             std::cout << "following node has " << uses.size() << " uses\n";
             dump(node, std::cout);
@@ -681,12 +755,8 @@ struct Souperify : public WalkerPass<PostWalker<Souperify>> {
   }
 };
 
-Pass *createSouperifyPass() {
-  return new Souperify(false);
-}
+Pass* createSouperifyPass() { return new Souperify(false); }
 
-Pass *createSouperifySingleUsePass() {
-  return new Souperify(true);
-}
+Pass* createSouperifySingleUsePass() { return new Souperify(true); }
 
 } // namespace wasm

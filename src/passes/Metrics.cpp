@@ -16,22 +16,21 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <ir/module-utils.h>
 #include <pass.h>
 #include <support/colors.h>
-#include <wasm.h>
 #include <wasm-binary.h>
-#include <ir/module-utils.h>
-
-using namespace std;
+#include <wasm.h>
 
 namespace wasm {
 
-typedef map<const char *, int> Counts;
+using Counts = std::map<const char*, int>;
 
 static Counts lastCounts;
 
 // Prints metrics between optimization passes.
-struct Metrics : public WalkerPass<PostWalker<Metrics, UnifiedExpressionVisitor<Metrics>>> {
+struct Metrics
+  : public WalkerPass<PostWalker<Metrics, UnifiedExpressionVisitor<Metrics>>> {
   bool modifiesBinaryenIR() override { return false; }
 
   bool byFunction;
@@ -49,37 +48,44 @@ struct Metrics : public WalkerPass<PostWalker<Metrics, UnifiedExpressionVisitor<
     ImportInfo imports(*module);
 
     // global things
-
-    for (auto& curr : module->functionTypes) {
-      visitFunctionType(curr.get());
-    }
     for (auto& curr : module->exports) {
       visitExport(curr.get());
     }
-    ModuleUtils::iterDefinedGlobals(*module, [&](Global* curr) {
-      walkGlobal(curr);
-    });
-    walkTable(&module->table);
-    walkMemory(&module->memory);
+    ModuleUtils::iterDefinedGlobals(*module,
+                                    [&](Global* curr) { walkGlobal(curr); });
 
-    // add imports
+    // add imports / funcs / globals / exports / tables / memories
     counts["[imports]"] = imports.getNumImports();
-    // add functions
     counts["[funcs]"] = imports.getNumDefinedFunctions();
+    counts["[globals]"] = imports.getNumDefinedGlobals();
+    counts["[tags]"] = imports.getNumDefinedTags();
     counts["[exports]"] = module->exports.size();
-    // add memory and table
-    if (module->memory.exists) {
-      Index size = 0;
-      for (auto& segment: module->memory.segments) {
-        size += segment.data.size();
-      }
+    counts["[tables]"] = imports.getNumDefinedTables();
+    counts["[memories]"] = imports.getNumDefinedMemories();
+
+    // add memory
+    for (auto& memory : module->memories) {
+      walkMemory(memory.get());
+    }
+    Index size = 0;
+    for (auto& segment : module->dataSegments) {
+      walkDataSegment(segment.get());
+      size += segment->data.size();
+    }
+    if (!module->memories.empty()) {
       counts["[memory-data]"] = size;
     }
-    if (module->table.exists) {
-      Index size = 0;
-      for (auto& segment: module->table.segments) {
-        size += segment.data.size();
-      }
+
+    // add table
+    size = 0;
+    for (auto& table : module->tables) {
+      walkTable(table.get());
+    }
+    for (auto& segment : module->elementSegments) {
+      walkElementSegment(segment.get());
+      size += segment->data.size();
+    }
+    if (!module->tables.empty()) {
       counts["[table-data]"] = size;
     }
 
@@ -96,13 +102,15 @@ struct Metrics : public WalkerPass<PostWalker<Metrics, UnifiedExpressionVisitor<
         counts.clear();
         walkFunction(func);
         counts["[vars]"] = func->getNumVars();
-        counts["[binary-bytes]"] = writer.tableOfContents.functionBodies[binaryIndex++].size;
-        printCounts(std::string("func: ") + func->name.str);
+        counts["[binary-bytes]"] =
+          writer.tableOfContents.functionBodies[binaryIndex++].size;
+        printCounts(std::string("func: ") + func->name.toString());
       });
       // print for each export how much code size is due to it, i.e.,
       // how much the module could shrink without it.
       auto sizeAfterGlobalCleanup = [](Module* module) {
-        PassRunner runner(module, PassOptions::getWithDefaultOptimizationOptions());
+        PassRunner runner(module,
+                          PassOptions::getWithDefaultOptimizationOptions());
         runner.setIsNested(true);
         runner.addDefaultGlobalOptimizationPostPasses(); // remove stuff
         runner.run();
@@ -118,13 +126,16 @@ struct Metrics : public WalkerPass<PostWalker<Metrics, UnifiedExpressionVisitor<
         baseline = sizeAfterGlobalCleanup(&test);
       }
       for (auto& exp : module->exports) {
-        // create a test module where we remove the export and then see how much can be removed thanks to that
+        // create a test module where we remove the export and then see how much
+        // can be removed thanks to that
         Module test;
         ModuleUtils::copyModule(*module, test);
         test.removeExport(exp->name);
         counts.clear();
-        counts["[removable-bytes-without-it]"] = baseline - sizeAfterGlobalCleanup(&test);
-        printCounts(std::string("export: ") + exp->name.str + " (" + exp->value.str + ')');
+        counts["[removable-bytes-without-it]"] =
+          baseline - sizeAfterGlobalCleanup(&test);
+        printCounts(std::string("export: ") + exp->name.toString() + " (" +
+                    exp->value.toString() + ')');
       }
       // check how much size depends on the start method
       if (!module->start.isNull()) {
@@ -132,8 +143,9 @@ struct Metrics : public WalkerPass<PostWalker<Metrics, UnifiedExpressionVisitor<
         ModuleUtils::copyModule(*module, test);
         test.start = Name();
         counts.clear();
-        counts["[removable-bytes-without-it]"] = baseline - sizeAfterGlobalCleanup(&test);
-        printCounts(std::string("start: ") + module->start.str);
+        counts["[removable-bytes-without-it]"] =
+          baseline - sizeAfterGlobalCleanup(&test);
+        printCounts(std::string("start: ") + module->start.toString());
       }
       // can't compare detailed info between passes yet
       lastCounts.clear();
@@ -153,29 +165,43 @@ struct Metrics : public WalkerPass<PostWalker<Metrics, UnifiedExpressionVisitor<
   }
 
   void printCounts(std::string title) {
-    ostream &o = cout;
-    vector<const char*> keys;
+    using std::left;
+    using std::noshowpos;
+    using std::right;
+    using std::setw;
+    using std::showpos;
+
+    std::ostream& o = std::cout;
+    std::vector<const char*> keys;
     // add total
     int total = 0;
-    for (auto i : counts) {
-      keys.push_back(i.first);
+    for (auto& [key, value] : counts) {
+      keys.push_back(key);
       // total is of all the normal stuff, not the special [things]
-      if (i.first[0] != '[') {
-        total += i.second;
+      if (key[0] != '[') {
+        total += value;
       }
     }
     keys.push_back("[total]");
     counts["[total]"] = total;
     // sort
     sort(keys.begin(), keys.end(), [](const char* a, const char* b) -> bool {
+      // Sort the [..] ones first.
+      if (a[0] == '[' && b[0] != '[') {
+        return true;
+      }
+      if (a[0] != '[' && b[0] == '[') {
+        return false;
+      }
       return strcmp(b, a) > 0;
     });
     o << title << "\n";
     for (auto* key : keys) {
       auto value = counts[key];
-      if (value == 0 && key[0] != '[') continue;
-      o << " " << left << setw(15) << key << ": " << setw(8)
-        << value;
+      if (value == 0 && key[0] != '[') {
+        continue;
+      }
+      o << " " << left << setw(15) << key << ": " << setw(8) << value;
       if (lastCounts.count(key)) {
         int before = lastCounts[key];
         int after = value;
@@ -195,12 +221,8 @@ struct Metrics : public WalkerPass<PostWalker<Metrics, UnifiedExpressionVisitor<
   }
 };
 
-Pass* createMetricsPass() {
-  return new Metrics(false);
-}
+Pass* createMetricsPass() { return new Metrics(false); }
 
-Pass* createFunctionMetricsPass() {
-  return new Metrics(true);
-}
+Pass* createFunctionMetricsPass() { return new Metrics(true); }
 
 } // namespace wasm

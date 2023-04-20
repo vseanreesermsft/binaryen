@@ -1,34 +1,38 @@
 total
  [exports]      : 1       
  [funcs]        : 1       
+ [globals]      : 0       
  [imports]      : 10      
+ [memories]     : 0       
  [memory-data]  : 0       
  [table-data]   : 0       
- [total]        : 1965    
+ [tables]       : 0       
+ [tags]         : 0       
+ [total]        : 1964    
  [vars]         : 9       
- binary         : 241     
- block          : 68      
- break          : 90      
- call           : 22      
- call_indirect  : 1       
- const          : 176     
- drop           : 8       
- if             : 27      
- load           : 313     
- local.get      : 633     
- local.set      : 181     
- loop           : 3       
- return         : 3       
- select         : 11      
- store          : 160     
- unary          : 28      
+ Binary         : 240     
+ Block          : 68      
+ Break          : 90      
+ Call           : 22      
+ CallIndirect   : 1       
+ Const          : 175     
+ Drop           : 8       
+ If             : 27      
+ Load           : 313     
+ LocalGet       : 633     
+ LocalSet       : 181     
+ Loop           : 3       
+ Return         : 3       
+ Select         : 11      
+ Store          : 160     
+ Unary          : 29      
 (module
- (type $FUNCSIG$viiii (func (param i32 i32 i32 i32)))
- (type $FUNCSIG$iii (func (param i32 i32) (result i32)))
- (type $FUNCSIG$iiii (func (param i32 i32 i32) (result i32)))
- (type $FUNCSIG$vi (func (param i32)))
- (import "env" "memory" (memory $0 4096 4096))
- (import "env" "table" (table $0 10 funcref))
+ (type $0 (func (param i32 i32 i32) (result i32)))
+ (type $2 (func (param i32 i32) (result i32)))
+ (type $3 (func (param i32 i32 i32 i32)))
+ (type $10 (func (param i32)))
+ (import "env" "memory" (memory $108 4096 4096))
+ (import "env" "table" (table $timport$109 10 funcref))
  (import "env" "crc32" (func $fimport$14 (param i32 i32 i32) (result i32)))
  (import "env" "adler32" (func $fimport$15 (param i32 i32 i32) (result i32)))
  (import "env" "deflate_huff" (func $fimport$20 (param i32 i32) (result i32)))
@@ -38,7 +42,7 @@ total
  (import "env" "memset" (func $fimport$97 (param i32 i32 i32) (result i32)))
  (import "env" "memcpy" (func $fimport$98 (param i32 i32 i32) (result i32)))
  (export "deflate" (func $0))
- (func $0 (; 8 ;) (; has Stack IR ;) (type $FUNCSIG$iii) (param $0 i32) (param $1 i32) (result i32)
+ (func $0 (; has Stack IR ;) (param $0 i32) (param $1 i32) (result i32)
   (local $2 i32)
   (local $3 i32)
   (local $4 i32)
@@ -797,14 +801,14 @@ total
                    )
                   )
                   (local.set $5
-                   (i32.add
+                   (i32.sub
                     (i32.shl
                      (i32.load offset=48
                       (local.get $2)
                      )
                      (i32.const 12)
                     )
-                    (i32.const -30720)
+                    (i32.const 30720)
                    )
                   )
                   (local.set $3
@@ -1140,9 +1144,9 @@ total
                             )
                            )
                           )
-                          (i32.gt_u
-                           (local.get $5)
+                          (i32.lt_u
                            (local.get $3)
+                           (local.get $5)
                           )
                          )
                         )
@@ -1285,8 +1289,7 @@ total
                     )
                    )
                    (if
-                    (i32.ge_u
-                     (local.get $6)
+                    (i32.le_u
                      (i32.load16_u offset=20
                       (local.tee $5
                        (i32.load offset=28
@@ -1294,6 +1297,7 @@ total
                        )
                       )
                      )
+                     (local.get $6)
                     )
                     (block
                      (local.set $3
@@ -1480,9 +1484,9 @@ total
                           )
                          )
                         )
-                        (i32.gt_u
-                         (local.get $5)
+                        (i32.lt_u
                          (local.get $3)
+                         (local.get $5)
                         )
                        )
                       )
@@ -1793,9 +1797,9 @@ total
                       )
                      )
                     )
-                    (i32.gt_u
-                     (local.get $5)
+                    (i32.lt_u
                      (local.get $3)
+                     (local.get $5)
                     )
                    )
                   )
@@ -2028,15 +2032,15 @@ total
        (block
         (block $label$52
          (br_if $label$52
-          (i32.le_u
+          (i32.ge_u
+           (i32.load offset=12
+            (local.get $2)
+           )
            (i32.add
             (i32.load offset=20
              (local.get $2)
             )
             (i32.const 2)
-           )
-           (i32.load offset=12
-            (local.get $2)
            )
           )
          )
@@ -2058,9 +2062,9 @@ total
                )
               )
              )
-             (i32.gt_u
-              (local.get $5)
+             (i32.lt_u
               (local.get $3)
+              (local.get $5)
              )
             )
            )
@@ -2139,7 +2143,10 @@ total
          )
         )
         (br_if $label$6
-         (i32.gt_u
+         (i32.lt_u
+          (i32.load offset=12
+           (local.get $2)
+          )
           (i32.add
            (local.tee $3
             (i32.load offset=20
@@ -2147,9 +2154,6 @@ total
             )
            )
            (i32.const 2)
-          )
-          (i32.load offset=12
-           (local.get $2)
           )
          )
         )
@@ -2342,9 +2346,9 @@ total
        )
       )
       (br_if $label$53
-       (i32.lt_s
-        (local.get $7)
+       (i32.gt_s
         (local.get $1)
+        (local.get $7)
        )
       )
       (br_if $label$53
@@ -2385,7 +2389,7 @@ total
         )
        )
        (br_if $label$57
-        (i32.ne
+        (i32.eqz
          (i32.or
           (i32.eqz
            (local.get $1)
@@ -2395,7 +2399,6 @@ total
            (i32.const 666)
           )
          )
-         (i32.const 1)
         )
        )
        (br_if $label$56
@@ -2443,7 +2446,7 @@ total
              )
             )
            )
-           (call_indirect (type $FUNCSIG$iii)
+           (call_indirect (type $2)
             (local.get $2)
             (local.get $1)
             (i32.load
@@ -2533,14 +2536,14 @@ total
           )
          )
          (local.tee $4
-          (i32.add
+          (i32.sub
            (i32.shl
             (i32.load offset=76
              (local.get $2)
             )
             (i32.const 1)
            )
-           (i32.const -2)
+           (i32.const 2)
           )
          )
         )
@@ -2686,13 +2689,13 @@ total
       (i32.const 1)
      )
      (br_if $label$1
-      (i32.lt_s
+      (i32.le_s
        (local.tee $4
         (i32.load offset=24
          (local.get $2)
         )
        )
-       (i32.const 1)
+       (i32.const 0)
       )
      )
      (local.set $1
@@ -3023,9 +3026,9 @@ total
             )
            )
           )
-          (i32.gt_u
-           (local.get $4)
+          (i32.lt_u
            (local.get $1)
+           (local.get $4)
           )
          )
         )
@@ -3104,13 +3107,13 @@ total
       )
      )
      (if
-      (i32.ge_s
+      (i32.gt_s
        (local.tee $0
         (i32.load offset=24
          (local.get $2)
         )
        )
-       (i32.const 1)
+       (i32.const 0)
       )
       (i32.store offset=24
        (local.get $2)

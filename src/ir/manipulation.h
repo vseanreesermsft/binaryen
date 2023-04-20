@@ -19,51 +19,62 @@
 
 #include "wasm.h"
 
-namespace wasm {
+namespace wasm::ExpressionManipulator {
 
-namespace ExpressionManipulator {
-  // Re-use a node's memory. This helps avoid allocation when optimizing.
-  template<typename InputType, typename OutputType>
-  inline OutputType* convert(InputType *input) {
-    static_assert(sizeof(OutputType) <= sizeof(InputType),
-                  "Can only convert to a smaller size Expression node");
-    input->~InputType(); // arena-allocaed, so no destructor, but avoid UB.
-    OutputType* output = (OutputType*)(input);
-    new (output) OutputType;
-    return output;
-  }
-
-  // Convenience method for nop, which is a common conversion
-  template<typename InputType>
-  inline Nop* nop(InputType* target) {
-    return convert<InputType, Nop>(target);
-  }
-
-  // Convert a node that allocates
-  template<typename InputType, typename OutputType>
-  inline OutputType* convert(InputType *input, MixedArena& allocator) {
-    assert(sizeof(OutputType) <= sizeof(InputType));
-    input->~InputType(); // arena-allocaed, so no destructor, but avoid UB.
-    OutputType* output = (OutputType*)(input);
-    new (output) OutputType(allocator);
-    return output;
-  }
-
-  using CustomCopier = std::function<Expression*(Expression*)>;
-  Expression* flexibleCopy(Expression* original, Module& wasm, CustomCopier custom);
-
-  inline Expression* copy(Expression* original, Module& wasm) {
-    auto copy = [](Expression* curr) {
-        return nullptr;
-    };
-    return flexibleCopy(original, wasm, copy);
-  }
-
-  // Splice an item into the middle of a block's list
-  void spliceIntoBlock(Block* block, Index index, Expression* add);
+// Re-use a node's memory. This helps avoid allocation when optimizing.
+template<typename InputType, typename OutputType>
+inline OutputType* convert(InputType* input) {
+  static_assert(sizeof(OutputType) <= sizeof(InputType),
+                "Can only convert to a smaller size Expression node");
+  input->~InputType(); // arena-allocaed, so no destructor, but avoid UB.
+  OutputType* output = (OutputType*)(input);
+  new (output) OutputType;
+  return output;
 }
 
-} // wasm
+// Convenience methods for certain instructions, which are common conversions
+template<typename InputType> inline Nop* nop(InputType* target) {
+  auto* ret = convert<InputType, Nop>(target);
+  ret->finalize();
+  return ret;
+}
+
+template<typename InputType>
+inline RefNull* refNull(InputType* target, Type type) {
+  assert(type.isNullable() && type.getHeapType().isBottom());
+  auto* ret = convert<InputType, RefNull>(target);
+  ret->finalize(type);
+  return ret;
+}
+
+template<typename InputType>
+inline Unreachable* unreachable(InputType* target) {
+  auto* ret = convert<InputType, Unreachable>(target);
+  ret->finalize();
+  return ret;
+}
+
+// Convert a node that allocates
+template<typename InputType, typename OutputType>
+inline OutputType* convert(InputType* input, MixedArena& allocator) {
+  assert(sizeof(OutputType) <= sizeof(InputType));
+  input->~InputType(); // arena-allocaed, so no destructor, but avoid UB.
+  OutputType* output = (OutputType*)(input);
+  new (output) OutputType(allocator);
+  return output;
+}
+
+using CustomCopier = std::function<Expression*(Expression*)>;
+Expression*
+flexibleCopy(Expression* original, Module& wasm, CustomCopier custom);
+
+inline Expression* copy(Expression* original, Module& wasm) {
+  auto copy = [](Expression* curr) { return nullptr; };
+  return flexibleCopy(original, wasm, copy);
+}
+
+// Splice an item into the middle of a block's list
+void spliceIntoBlock(Block* block, Index index, Expression* add);
+} // namespace wasm::ExpressionManipulator
 
 #endif // wams_ir_manipulation_h
-

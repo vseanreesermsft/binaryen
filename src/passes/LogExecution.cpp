@@ -28,26 +28,20 @@
 // value.
 //
 
-#include <wasm.h>
-#include <wasm-builder.h>
-#include <pass.h>
-#include "shared-constants.h"
 #include "asmjs/shared-constants.h"
-#include "asm_v_wasm.h"
-#include "ir/function-type-utils.h"
+#include "shared-constants.h"
+#include <pass.h>
+#include <wasm-builder.h>
+#include <wasm.h>
 
 namespace wasm {
 
 Name LOGGER("log_execution");
 
 struct LogExecution : public WalkerPass<PostWalker<LogExecution>> {
-  void visitLoop(Loop* curr) {
-    curr->body = makeLogCall(curr->body);
-  }
+  void visitLoop(Loop* curr) { curr->body = makeLogCall(curr->body); }
 
-  void visitReturn(Return* curr) {
-    replaceCurrent(makeLogCall(curr));
-  }
+  void visitReturn(Return* curr) { replaceCurrent(makeLogCall(curr)); }
 
   void visitFunction(Function* curr) {
     if (curr->imported()) {
@@ -61,16 +55,32 @@ struct LogExecution : public WalkerPass<PostWalker<LogExecution>> {
     curr->body = makeLogCall(curr->body);
   }
 
-  void visitModule(Module *curr) {
+  void visitModule(Module* curr) {
     // Add the import
-    auto import = new Function;
-    import->name = LOGGER;
-    import->module = ENV;
+    auto import =
+      Builder::makeFunction(LOGGER, Signature(Type::i32, Type::none), {});
+
+    // Import the log function from import "env" if the module
+    // imports other functions from that name.
+    for (auto& func : curr->functions) {
+      if (func->imported() && func->module == ENV) {
+        import->module = func->module;
+        break;
+      }
+    }
+
+    // If not, then pick the import name of the first function we find.
+    if (!import->module) {
+      for (auto& func : curr->functions) {
+        if (func->imported()) {
+          import->module = func->module;
+          break;
+        }
+      }
+    }
+
     import->base = LOGGER;
-    auto* functionType = ensureFunctionType("vi", curr);
-    import->type = functionType->name;
-    FunctionTypeUtils::fillFunction(import, functionType);
-    curr->addFunction(import);
+    curr->addFunction(std::move(import));
   }
 
 private:
@@ -78,18 +88,11 @@ private:
     static Index id = 0;
     Builder builder(*getModule());
     return builder.makeSequence(
-      builder.makeCall(
-        LOGGER,
-        { builder.makeConst(Literal(int32_t(id++))) },
-        none
-      ),
-      curr
-    );
+      builder.makeCall(LOGGER, {builder.makeConst(int32_t(id++))}, Type::none),
+      curr);
   }
 };
 
-Pass *createLogExecutionPass() {
-  return new LogExecution();
-}
+Pass* createLogExecutionPass() { return new LogExecution(); }
 
 } // namespace wasm

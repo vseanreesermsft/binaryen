@@ -16,187 +16,102 @@
 
 #include "ir/load-utils.h"
 #include "ir/utils.h"
-#include "support/hash.h"
 
-namespace wasm {
+namespace wasm::ExpressionManipulator {
 
-namespace ExpressionManipulator {
-
-Expression* flexibleCopy(Expression* original, Module& wasm, CustomCopier custom) {
-  struct Copier : public Visitor<Copier, Expression*> {
-    Module& wasm;
-    CustomCopier custom;
-
-    Builder builder;
-
-    Copier(Module& wasm, CustomCopier custom) : wasm(wasm), custom(custom), builder(wasm) {}
-
-    Expression* copy(Expression* curr) {
-      if (!curr) return nullptr;
-      auto* ret = custom(curr);
-      if (ret) return ret;
-      return Visitor<Copier, Expression*>::visit(curr);
-    }
-
-    Expression* visitBlock(Block *curr) {
-      ExpressionList list(wasm.allocator);
-      for (Index i = 0; i < curr->list.size(); i++) {
-        list.push_back(copy(curr->list[i]));
-      }
-      return builder.makeBlock(curr->name, list, curr->type);
-    }
-    Expression* visitIf(If *curr) {
-      return builder.makeIf(copy(curr->condition), copy(curr->ifTrue), copy(curr->ifFalse), curr->type);
-    }
-    Expression* visitLoop(Loop *curr) {
-      return builder.makeLoop(curr->name, copy(curr->body));
-    }
-    Expression* visitBreak(Break *curr) {
-      return builder.makeBreak(curr->name, copy(curr->value), copy(curr->condition));
-    }
-    Expression* visitSwitch(Switch *curr) {
-      return builder.makeSwitch(curr->targets, curr->default_, copy(curr->condition), copy(curr->value));
-    }
-    Expression* visitCall(Call *curr) {
-      auto* ret = builder.makeCall(curr->target, {}, curr->type);
-      for (Index i = 0; i < curr->operands.size(); i++) {
-        ret->operands.push_back(copy(curr->operands[i]));
-      }
-      return ret;
-    }
-    Expression* visitCallIndirect(CallIndirect *curr) {
-      auto* ret = builder.makeCallIndirect(curr->fullType, copy(curr->target), {}, curr->type);
-      for (Index i = 0; i < curr->operands.size(); i++) {
-        ret->operands.push_back(copy(curr->operands[i]));
-      }
-      return ret;
-    }
-    Expression* visitGetLocal(GetLocal *curr) {
-      return builder.makeGetLocal(curr->index, curr->type);
-    }
-    Expression* visitSetLocal(SetLocal *curr) {
-      if (curr->isTee()) {
-        return builder.makeTeeLocal(curr->index, copy(curr->value));
-      } else {
-        return builder.makeSetLocal(curr->index, copy(curr->value));
-      }
-    }
-    Expression* visitGetGlobal(GetGlobal *curr) {
-      return builder.makeGetGlobal(curr->name, curr->type);
-    }
-    Expression* visitSetGlobal(SetGlobal *curr) {
-      return builder.makeSetGlobal(curr->name, copy(curr->value));
-    }
-    Expression* visitLoad(Load *curr) {
-      if (curr->isAtomic) {
-        return builder.makeAtomicLoad(curr->bytes, curr->offset,
-                                      copy(curr->ptr), curr->type);
-      }
-      return builder.makeLoad(curr->bytes, LoadUtils::isSignRelevant(curr) ? curr->signed_ : false, curr->offset, curr->align, copy(curr->ptr), curr->type);
-    }
-    Expression* visitStore(Store *curr) {
-      if (curr->isAtomic) {
-        return builder.makeAtomicStore(curr->bytes, curr->offset, copy(curr->ptr), copy(curr->value), curr->valueType);
-      }
-      return builder.makeStore(curr->bytes, curr->offset, curr->align, copy(curr->ptr), copy(curr->value), curr->valueType);
-    }
-    Expression* visitAtomicRMW(AtomicRMW* curr) {
-      return builder.makeAtomicRMW(curr->op, curr->bytes, curr->offset,
-                                   copy(curr->ptr), copy(curr->value), curr->type);
-    }
-    Expression* visitAtomicCmpxchg(AtomicCmpxchg* curr) {
-      return builder.makeAtomicCmpxchg(curr->bytes, curr->offset,
-                                       copy(curr->ptr), copy(curr->expected), copy(curr->replacement),
-                                       curr->type);
-    }
-    Expression* visitAtomicWait(AtomicWait* curr) {
-      return builder.makeAtomicWait(copy(curr->ptr), copy(curr->expected), copy(curr->timeout), curr->expectedType, curr->offset);
-    }
-    Expression* visitAtomicNotify(AtomicNotify* curr) {
-      return builder.makeAtomicNotify(copy(curr->ptr), copy(curr->notifyCount), curr->offset);
-    }
-    Expression* visitSIMDExtract(SIMDExtract* curr) {
-      return builder.makeSIMDExtract(curr->op, copy(curr->vec), curr->index);
-    }
-    Expression* visitSIMDReplace(SIMDReplace* curr) {
-      return builder.makeSIMDReplace(curr->op, copy(curr->vec), curr->index, copy(curr->value));
-    }
-    Expression* visitSIMDShuffle(SIMDShuffle* curr) {
-      return builder.makeSIMDShuffle(copy(curr->left), copy(curr->right), curr->mask);
-    }
-    Expression* visitSIMDBitselect(SIMDBitselect* curr) {
-      return builder.makeSIMDBitselect(copy(curr->left), copy(curr->right), copy(curr->cond));
-    }
-    Expression* visitSIMDShift(SIMDShift* curr) {
-      return builder.makeSIMDShift(curr->op, copy(curr->vec), copy(curr->shift));
-    }
-    Expression* visitConst(Const* curr) {
-      return builder.makeConst(curr->value);
-    }
-    Expression* visitMemoryInit(MemoryInit* curr) {
-      return builder.makeMemoryInit(curr->segment, copy(curr->dest), copy(curr->offset), copy(curr->size));
-    }
-    Expression* visitDataDrop(DataDrop* curr) {
-      return builder.makeDataDrop(curr->segment);
-    }
-    Expression* visitMemoryCopy(MemoryCopy* curr) {
-      return builder.makeMemoryCopy(copy(curr->dest), copy(curr->source), copy(curr->size));
-    }
-    Expression* visitMemoryFill(MemoryFill* curr) {
-      return builder.makeMemoryFill(copy(curr->dest), copy(curr->value), copy(curr->size));
-    }
-    Expression* visitUnary(Unary *curr) {
-      return builder.makeUnary(curr->op, copy(curr->value));
-    }
-    Expression* visitBinary(Binary *curr) {
-      return builder.makeBinary(curr->op, copy(curr->left), copy(curr->right));
-    }
-    Expression* visitSelect(Select *curr) {
-      return builder.makeSelect(copy(curr->condition), copy(curr->ifTrue), copy(curr->ifFalse));
-    }
-    Expression* visitDrop(Drop *curr) {
-      return builder.makeDrop(copy(curr->value));
-    }
-    Expression* visitReturn(Return *curr) {
-      return builder.makeReturn(copy(curr->value));
-    }
-    Expression* visitHost(Host *curr) {
-      std::vector<Expression*> operands;
-      for (Index i = 0; i < curr->operands.size(); i++) {
-        operands.push_back(copy(curr->operands[i]));
-      }
-      auto* ret = builder.makeHost(curr->op, curr->nameOperand, std::move(operands));
-      return ret;
-    }
-    Expression* visitNop(Nop *curr) {
-      return builder.makeNop();
-    }
-    Expression* visitUnreachable(Unreachable *curr) {
-      return builder.makeUnreachable();
-    }
+Expression*
+flexibleCopy(Expression* original, Module& wasm, CustomCopier custom) {
+  // Perform the copy using a stack of tasks (avoiding recusion).
+  struct CopyTask {
+    // The thing to copy.
+    Expression* original;
+    // The location of the pointer to write the copy to.
+    Expression** destPointer;
   };
+  std::vector<CopyTask> tasks;
+  Expression* ret;
+  tasks.push_back({original, &ret});
+  while (!tasks.empty()) {
+    auto task = tasks.back();
+    tasks.pop_back();
+    // If the custom copier handled this one, we have nothing to do.
+    auto* copy = custom(task.original);
+    if (copy) {
+      *task.destPointer = copy;
+      continue;
+    }
+    // If the original is a null, just copy that. (This can happen for an
+    // optional child.)
+    auto* original = task.original;
+    if (original == nullptr) {
+      *task.destPointer = nullptr;
+      continue;
+    }
+    // Allocate a new copy, and copy the fields.
 
-  Copier copier(wasm, custom);
-  return copier.copy(original);
+#define DELEGATE_ID original->_id
+
+// Allocate a new expression of the right type, and create cast versions of it
+// for later operations.
+#define DELEGATE_START(id)                                                     \
+  copy = wasm.allocator.alloc<id>();                                           \
+  [[maybe_unused]] auto* castOriginal = original->cast<id>();                  \
+  [[maybe_unused]] auto* castCopy = copy->cast<id>();
+
+// Handle each type of field, copying it appropriately.
+#define DELEGATE_FIELD_CHILD(id, field)                                        \
+  tasks.push_back({castOriginal->field, &castCopy->field});
+
+#define DELEGATE_FIELD_CHILD_VECTOR(id, field)                                 \
+  castCopy->field.resize(castOriginal->field.size());                          \
+  for (Index i = 0; i < castOriginal->field.size(); i++) {                     \
+    tasks.push_back({castOriginal->field[i], &castCopy->field[i]});            \
+  }
+
+#define COPY_FIELD(field) castCopy->field = castOriginal->field;
+
+#define DELEGATE_FIELD_INT(id, field) COPY_FIELD(field)
+#define DELEGATE_FIELD_LITERAL(id, field) COPY_FIELD(field)
+#define DELEGATE_FIELD_NAME(id, field) COPY_FIELD(field)
+#define DELEGATE_FIELD_SCOPE_NAME_DEF(id, field) COPY_FIELD(field)
+#define DELEGATE_FIELD_SCOPE_NAME_USE(id, field) COPY_FIELD(field)
+#define DELEGATE_FIELD_TYPE(id, field) COPY_FIELD(field)
+#define DELEGATE_FIELD_HEAPTYPE(id, field) COPY_FIELD(field)
+#define DELEGATE_FIELD_ADDRESS(id, field) COPY_FIELD(field)
+
+#define COPY_FIELD_LIST(field)                                                 \
+  for (Index i = 0; i < castOriginal->field.size(); i++) {                     \
+    castCopy->field[i] = castOriginal->field[i];                               \
+  }
+
+#define COPY_VECTOR(field)                                                     \
+  castCopy->field.resize(castOriginal->field.size());                          \
+  COPY_FIELD_LIST(field)
+
+#define COPY_ARRAY(field)                                                      \
+  assert(castCopy->field.size() == castOriginal->field.size());                \
+  COPY_FIELD_LIST(field)
+
+#define DELEGATE_FIELD_SCOPE_NAME_USE_VECTOR(id, field) COPY_VECTOR(field)
+#define DELEGATE_FIELD_NAME_VECTOR(id, field) COPY_VECTOR(field)
+
+#define DELEGATE_FIELD_INT_ARRAY(id, field) COPY_ARRAY(field)
+
+#include "wasm-delegations-fields.def"
+
+    // The type can be simply copied.
+    copy->type = original->type;
+
+    // Write the copy to where it should be referred to.
+    *task.destPointer = copy;
+  }
+  return ret;
 }
-
 
 // Splice an item into the middle of a block's list
 void spliceIntoBlock(Block* block, Index index, Expression* add) {
-  auto& list = block->list;
-  if (index == list.size()) {
-    list.push_back(add); // simple append
-  } else {
-    // we need to make room
-    list.push_back(nullptr);
-    for (Index i = list.size() - 1; i > index; i--) {
-      list[i] = list[i - 1];
-    }
-    list[index] = add;
-  }
+  block->list.insertAt(index, add);
   block->finalize(block->type);
 }
 
-} // namespace ExpressionManipulator
-
-} // namespace wasm
+} // namespace wasm::ExpressionManipulator

@@ -17,14 +17,12 @@
 #ifndef wasm_ir_features_h
 #define wasm_ir_features_h
 
-#include <wasm.h>
+#include <ir/iteration.h>
 #include <wasm-binary.h>
 #include <wasm-traversal.h>
-#include <ir/iteration.h>
+#include <wasm.h>
 
-namespace wasm {
-
-namespace Features {
+namespace wasm::Features {
 
 inline FeatureSet get(UnaryOp op) {
   FeatureSet ret;
@@ -48,17 +46,12 @@ inline FeatureSet get(UnaryOp op) {
     case SplatVecF64x2:
     case NotVec128:
     case NegVecI8x16:
-    case AnyTrueVecI8x16:
     case AllTrueVecI8x16:
     case NegVecI16x8:
-    case AnyTrueVecI16x8:
     case AllTrueVecI16x8:
     case NegVecI32x4:
-    case AnyTrueVecI32x4:
     case AllTrueVecI32x4:
     case NegVecI64x2:
-    case AnyTrueVecI64x2:
-    case AllTrueVecI64x2:
     case AbsVecF32x4:
     case NegVecF32x4:
     case SqrtVecF32x4:
@@ -67,12 +60,8 @@ inline FeatureSet get(UnaryOp op) {
     case SqrtVecF64x2:
     case TruncSatSVecF32x4ToVecI32x4:
     case TruncSatUVecF32x4ToVecI32x4:
-    case TruncSatSVecF64x2ToVecI64x2:
-    case TruncSatUVecF64x2ToVecI64x2:
     case ConvertSVecI32x4ToVecF32x4:
-    case ConvertUVecI32x4ToVecF32x4:
-    case ConvertSVecI64x2ToVecF64x2:
-    case ConvertUVecI64x2ToVecF64x2: {
+    case ConvertUVecI32x4ToVecF32x4: {
       ret.setSIMD();
       break;
     }
@@ -143,7 +132,6 @@ inline FeatureSet get(BinaryOp op) {
     case SubVecI8x16:
     case SubSatSVecI8x16:
     case SubSatUVecI8x16:
-    case MulVecI8x16:
     case AddVecI16x8:
     case AddSatSVecI16x8:
     case AddSatUVecI16x8:
@@ -176,8 +164,6 @@ inline FeatureSet get(BinaryOp op) {
   return ret;
 }
 
-} // namespace Features
-
-} // namespace wasm
+} // namespace wasm::Features
 
 #endif // wasm_ir_features_h

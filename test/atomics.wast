@@ -138,24 +138,47 @@
   (local $0 i32)
   (local $1 i64)
   (drop
-   (i32.atomic.wait
+   (memory.atomic.wait32
     (local.get $0)
     (local.get $0)
     (local.get $1)
    )
   )
   (drop
-   (atomic.notify
+   (memory.atomic.wait32 offset=4 align=4
+    (local.get $0)
+    (local.get $0)
+    (local.get $1)
+   )
+  )
+  (drop
+   (memory.atomic.notify
     (local.get $0)
     (local.get $0)
    )
   )
   (drop
-   (i64.atomic.wait
+   (memory.atomic.notify offset=24 align=4
+    (local.get $0)
+    (local.get $0)
+   )
+  )
+  (drop
+   (memory.atomic.wait64
     (local.get $0)
     (local.get $1)
     (local.get $1)
    )
   )
+  (drop
+   (memory.atomic.wait64 align=8 offset=16
+    (local.get $0)
+    (local.get $1)
+    (local.get $1)
+   )
+  )
+ )
+ (func $atomic-fence (type $0)
+  (atomic.fence)
  )
 )

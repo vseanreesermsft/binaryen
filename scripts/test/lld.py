@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # Copyright 2017 WebAssembly Community Group participants
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,70 +13,88 @@
 # limitations under the License.
 
 import os
-from support import run_command
-from shared import (
-    fail_with_error, files_with_pattern, options,
-    WASM_EMSCRIPTEN_FINALIZE, fail_if_not_identical_to_file
-)
+from . import shared
+from . import support
 
 
 def args_for_finalize(filename):
-   if 'shared' in filename:
-     return ['--side-module']
-   else:
-     return ['--global-base=568', '--initial-stack-pointer=16384']
+    ret = ['--global-base=568']
+    if 'safe_stack' in filename:
+        ret += ['--check-stack-overflow']
+    if 'shared' in filename:
+        ret += ['--side-module']
+    if 'standalone-wasm' in filename:
+        ret += ['--standalone-wasm']
+    return ret
+
+
+def run_test(input_path):
+    print('..', input_path)
+    is_passive = '.passive.' in input_path
+    mem_file = input_path + '.mem'
+    extension_arg_map = {
+        '.out': [],
+    }
+    if not is_passive:
+        extension_arg_map.update({
+            '.mem.out': ['--separate-data-segments', mem_file],
+        })
+    for ext, args in extension_arg_map.items():
+        expected_file = input_path + ext
+        if not os.path.exists(expected_file):
+            if ext == '.out':
+                shared.fail_with_error('output ' + expected_file +
+                                       ' does not exist')
+            else:
+                continue
+
+        cmd = shared.WASM_EMSCRIPTEN_FINALIZE + args
+        if '64' in input_path:
+            cmd += ['--enable-memory64', '--bigint']
+        cmd += [input_path, '-S']
+        cmd += args_for_finalize(os.path.basename(input_path))
+        actual = support.run_command(cmd)
+
+        shared.fail_if_not_identical_to_file(actual, expected_file)
+
+        if ext == '.mem.out':
+            with open(mem_file) as mf:
+                mem = mf.read()
+                shared.fail_if_not_identical_to_file(mem, input_path + '.mem.mem')
+            os.remove(mem_file)
 
 
 def test_wasm_emscripten_finalize():
-  print '\n[ checking wasm-emscripten-finalize testcases... ]\n'
+    print('\n[ checking wasm-emscripten-finalize testcases... ]\n')
 
-  for wast_path in files_with_pattern(options.binaryen_test, 'lld', '*.wast'):
-    print '..', wast_path
-    mem_file = wast_path + '.mem'
-    extension_arg_map = {
-      '.out': [],
-      '.mem.out': ['--separate-data-segments', mem_file],
-    }
-    for ext, ext_args in extension_arg_map.items():
-      expected_file = wast_path + ext
-      if ext != '.out' and not os.path.exists(expected_file):
-        continue
-
-      cmd = WASM_EMSCRIPTEN_FINALIZE + [wast_path, '-S'] + ext_args
-      cmd += args_for_finalize(os.path.basename(wast_path))
-      actual = run_command(cmd)
-
-      if not os.path.exists(expected_file):
-        print actual
-        fail_with_error('output ' + expected_file + ' does not exist')
-      fail_if_not_identical_to_file(actual, expected_file)
-      if ext == '.mem.out':
-        with open(mem_file) as mf:
-          mem = mf.read()
-          fail_if_not_identical_to_file(mem, wast_path + '.mem.mem')
-        os.remove(mem_file)
+    for input_path in shared.get_tests(shared.get_test_dir('lld'), ['.wat', '.wasm']):
+        run_test(input_path)
 
 
 def update_lld_tests():
-  print '\n[ updatring wasm-emscripten-finalize testcases... ]\n'
+    print('\n[ updating wasm-emscripten-finalize testcases... ]\n')
 
-  for wast_path in files_with_pattern(options.binaryen_test, 'lld', '*.wast'):
-    print '..', wast_path
-    mem_file = wast_path + '.mem'
-    extension_arg_map = {
-      '.out': [],
-      '.mem.out': ['--separate-data-segments', mem_file + '.mem'],
-    }
-    for ext, ext_args in extension_arg_map.items():
-      out_path = wast_path + ext
-      if ext != '.out' and not os.path.exists(out_path):
-        continue
-      cmd = WASM_EMSCRIPTEN_FINALIZE + [wast_path, '-S'] + ext_args
-      cmd += args_for_finalize(os.path.basename(wast_path))
-      actual = run_command(cmd)
-      with open(out_path, 'w') as o:
-        o.write(actual)
+    for input_path in shared.get_tests(shared.get_test_dir('lld'), ['.wat', '.wasm']):
+        print('..', input_path)
+        is_passive = '.passive.' in input_path
+        mem_file = input_path + '.mem'
+        extension_arg_map = {
+            '.out': [],
+        }
+        if not is_passive:
+            extension_arg_map.update({
+                '.mem.out': ['--separate-data-segments', mem_file + '.mem'],
+            })
+        for ext, ext_args in extension_arg_map.items():
+            out_path = input_path + ext
+            if ext != '.out' and not os.path.exists(out_path):
+                continue
+            cmd = shared.WASM_EMSCRIPTEN_FINALIZE + ext_args
+            if '64' in input_path:
+                cmd += ['--enable-memory64', '--bigint']
+            cmd += [input_path, '-S']
+            cmd += args_for_finalize(os.path.basename(input_path))
+            actual = support.run_command(cmd)
 
-
-if __name__ == '__main__':
-  test_wasm_emscripten_finalize()
+            with open(out_path, 'w') as o:
+                o.write(actual)

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.Build.Traversal">
   <PropertyGroup>
-    <ClangTarget Condition="'$(ClangTarget)' == '' and '$(TargetArchitecture)' == 'x64'">x86_64-linux-gnu</ClangTarget>
-    <ClangTarget Condition="'$(ClangTarget)' == '' and '$(TargetArchitecture)' == 'arm64'">aarch64-linux-gnu</ClangTarget>
+    <ClangVersion Condition="'$(ClangVersion)' == ''">clang</ClangVersion>
+    <ClangPlusVersion Condition="'$(ClangPlusVersion)' == ''">clang++</ClangPlusVersion>
     <Sysroot Condition="'$(ROOTFS_DIR)' == ''">/</Sysroot>
     <Sysroot Condition="'$(ROOTFS_DIR)' != ''">$(ROOTFS_DIR)</Sysroot>
     <CMakeGenerator Condition="$(CMakeGenerator) == '' and '$(BuildOS)' != 'Windows_NT'">Unix Makefiles</CMakeGenerator>
@@ -36,11 +36,10 @@
       <_CommonCFlags Condition="'$(BuildOS)' == 'Linux' and '$(ClangTarget)' != ''">--target=$(ClangTarget) --gcc-toolchain=$(Sysroot)/usr/ --sysroot=$(Sysroot)</_CommonCFlags>
       <_CommonCFlags Condition="'$(BuildOS)' == 'OSX' and '$(TargetArchitecture)' == 'arm64'">--target=aarch64-apple-darwin</_CommonCFlags>
       <_CrossCFlags>$(_CommonCFlags)</_CrossCFlags>
-      <_CrossCFlags Condition="'$(BuildOS)' == 'Linux'">-fuse-ld=lld  $(_CommonCFlags)</_CrossCFlags>
       <_ExeLinkerFlags>$(_CommonCFlags)</_ExeLinkerFlags>
       <_ExeLinkerFlags Condition="'$(BuildOS)' == 'Linux'">-Wl,--build-id -fuse-ld=lld -lstdc++ -lm $(_ExeLinkerFlags)</_ExeLinkerFlags>
       <_SharedLinkerFlags>$(_CommonCFlags)</_SharedLinkerFlags>
-      <_SharedLinkerFlags Condition="'$(BuildOS)' == 'Linux'">-Wl,--build-id -fuse-ld=lld -lstdc++ -lm $(_SharedLinkerFlags)</_SharedLinkerFlags>
+      <_SharedLinkerFlags Condition="'$(BuildOS)' == 'Linux'">-Wl,--build-id -lstdc++ -lm $(_SharedLinkerFlags)</_SharedLinkerFlags>
     </PropertyGroup>
     <ItemGroup>
       <_BuildArgs Include="-DCMAKE_BUILD_TYPE=RelWithDebInfo" />
@@ -53,8 +52,10 @@
       <_BuildArgs Include='-DCMAKE_CXX_FLAGS="$(_CrossCFlags)"' />
       <_BuildArgs Include='-DCMAKE_EXE_LINKER_FLAGS="$(_ExeLinkerFlags)"' />
       <_BuildArgs Include='-DCMAKE_SHARED_LINKER_FLAGS="$(_SharedLinkerFlags)"' />
-      <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_C_COMPILER=clang" />
-      <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_CXX_COMPILER=clang" />
+      <_BuildArgs Include="-DBUILD_TESTS:BOOL=OFF" />
+      <_BuildArgs Include="-DINSTALL_LIBS:BOOL=OFF" />
+      <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_C_COMPILER=$(ClangVersion)" />
+      <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_CXX_COMPILER=$(ClangPlusVersion)" />
     </ItemGroup>
     <PropertyGroup>
       <_CmakeArgs>$(_SetupEnvironment) cmake $(ProjectDir) -G "$(CMakeGenerator)" @(_BuildArgs->'%(Identity)',' ')</_CmakeArgs>

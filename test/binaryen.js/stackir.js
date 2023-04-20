@@ -16,9 +16,11 @@ var wast = `
  )
 )
 `;
+
 console.log("=== input wast ===" + wast);
 
-var module = Binaryen.parseText(wast);
+var module = binaryen.parseText(wast);
+assert(module.validate());
 
 console.log("=== default ===");
 console.log(module.emitStackIR());
