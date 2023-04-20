@@ -36,11 +36,10 @@
       <_CommonCFlags Condition="'$(BuildOS)' == 'Linux' and '$(ClangTarget)' != ''">--target=$(ClangTarget) --gcc-toolchain=$(Sysroot)/usr/ --sysroot=$(Sysroot)</_CommonCFlags>
       <_CommonCFlags Condition="'$(BuildOS)' == 'OSX' and '$(TargetArchitecture)' == 'arm64'">--target=aarch64-apple-darwin</_CommonCFlags>
       <_CrossCFlags>$(_CommonCFlags)</_CrossCFlags>
-      <_CrossCFlags Condition="'$(BuildOS)' == 'Linux'">-fuse-ld=lld  $(_CommonCFlags)</_CrossCFlags>
       <_ExeLinkerFlags>$(_CommonCFlags)</_ExeLinkerFlags>
       <_ExeLinkerFlags Condition="'$(BuildOS)' == 'Linux'">-Wl,--build-id -fuse-ld=lld -lstdc++ -lm $(_ExeLinkerFlags)</_ExeLinkerFlags>
       <_SharedLinkerFlags>$(_CommonCFlags)</_SharedLinkerFlags>
-      <_SharedLinkerFlags Condition="'$(BuildOS)' == 'Linux'">-Wl,--build-id -fuse-ld=lld -lstdc++ -lm $(_SharedLinkerFlags)</_SharedLinkerFlags>
+      <_SharedLinkerFlags Condition="'$(BuildOS)' == 'Linux'">-Wl,--build-id -lstdc++ -lm $(_SharedLinkerFlags)</_SharedLinkerFlags>
     </PropertyGroup>
     <ItemGroup>
       <_BuildArgs Include="-DCMAKE_BUILD_TYPE=RelWithDebInfo" />
