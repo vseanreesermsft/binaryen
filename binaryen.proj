@@ -54,6 +54,7 @@
       <_BuildArgs Include='-DCMAKE_EXE_LINKER_FLAGS="$(_ExeLinkerFlags)"' />
       <_BuildArgs Include='-DCMAKE_SHARED_LINKER_FLAGS="$(_SharedLinkerFlags)"' />
       <_BuildArgs Include="-DBUILD_TESTS:BOOL=OFF" />
+      <_BuildArgs Include="-DINSTALL_LIBS:BOOL=OFF" />
       <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_C_COMPILER=clang" />
       <_BuildArgs Condition="'$(BuildOS)' == 'Linux'" Include="-DCMAKE_CXX_COMPILER=clang" />
     </ItemGroup>
